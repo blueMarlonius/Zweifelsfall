@@ -195,15 +195,27 @@ if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
 
     # Diese Zeile muss eingerückt sein (4 Leerzeichen vom Rand)
-    @st.fragment(run_every=5)
+@st.fragment(run_every=5)
     def show_opponents_fragment():
-        # Alles hier drin muss nochmals 4 Leerzeichen eingerückt sein
-        f_doc = db.collection("games").document(st.session_state.gid).get()
+        # 1. Daten laden
+        doc_ref = db.collection("games").document(st.session_state.gid)
+        f_doc = doc_ref.get()
+        
+        if not f_doc.exists:
+            st.warning("Verbindung zum Raum verloren...")
+            return  # Beendet die Funktion hier sicher
+
         f_state = f_doc.to_dict()
+        f_players = f_state.get("players", {})
+        f_order = f_state.get("order", [])
 
-        # Die Spalten-Logik (Original aus deinem Code)
+        # 2. Sicherheits-Check: Nur fortfahren, wenn Spieler da sind
+        if not f_order:
+            st.info("Warte auf Spieler...")
+            return
+
+        # 3. Jetzt erst die Spalten erstellen
         cols = st.columns(len(f_order))
-
         for i, name in enumerate(f_order):
             p_data = f_players[name]
             with cols[i]:
