@@ -198,28 +198,24 @@ if state.get("started", False):
     @st.fragment(run_every=5)
     def show_opponents_fragment():
         # 1. Daten laden
-        doc_ref = db.collection("games").document(st.session_state.gid)
-        f_doc = doc_ref.get()
-        
+        f_doc = db.collection("games").document(st.session_state.gid).get()
         if not f_doc.exists:
-            st.warning("Verbindung zum Raum verloren...")
-            return  # Beendet die Funktion hier sicher
-
+            return
+        
         f_state = f_doc.to_dict()
         f_players = f_state.get("players", {})
         f_order = f_state.get("order", [])
+        
+        # --- DIESE ZEILE FEHLT WAHRSCHEINLICH ODER IST FALSCH PLATZIERT ---
+        # Wir ermitteln den Namen des Spielers, der gerade dran ist:
+        f_curr_p = f_order[f_state["turn_idx"]] if f_order else ""
+        # -----------------------------------------------------------------
 
-        # 2. Sicherheits-Check: Nur fortfahren, wenn Spieler da sind
-        if not f_order:
-            st.info("Warte auf Spieler...")
-            return
-
-        # 3. Jetzt erst die Spalten erstellen
         cols = st.columns(len(f_order))
         for i, name in enumerate(f_order):
             p_data = f_players[name]
             with cols[i]:
-                # Wer ist aktuell am Zug?
+                # Jetzt ist f_curr_p bekannt und der Fehler verschwindet:
                 is_turn = (name == f_curr_p)
                 border_color = "#FF4B4B" if is_turn else "#333"
                 
