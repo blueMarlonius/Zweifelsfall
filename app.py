@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+import streamlit as st
 import os
 from google.cloud import firestore
 from google.oauth2 import service_account
@@ -34,16 +35,25 @@ def save(s):
     """Speichert den Spielzustand."""
     db.collection("games").document(st.session_state.gid).set(s)
 
+@st.cache_data # Verhindert das Flackern durch Zwischenspeichern
 def get_card_image(card):
-    # Der Pfad, unter dem das Bild gesucht wird
     path = f"assets/card_{card['val']}_{card['color']}.png"
-    
-    # Prüfen, ob die Datei wirklich existiert
     if os.path.exists(path):
         return path
-    else:
-        # Falls das Bild fehlt: Ein grauer Platzhalter mit Text
-        return f"https://via.placeholder.com/300x450.png?text=Karte+{card['val']}+{card['color']}+fehlt"
+    return f"https://via.placeholder.com/300x450.png?text={card['val']}+{card['color']}"
+
+def get_card_display_name(val, color):
+    """Gibt den Namen der Karte zurück."""
+    names = {
+        0: ("Tradition", "Indoktrination"), 1: ("Missionar", "Aufklärer"),
+        2: ("Beichtvater", "Psychologe"), 3: ("Mystiker", "Logiker"),
+        4: ("Eremit", "Stoiker"), 5: ("Prediger", "Reformator"),
+        6: ("Prophet", "Agnostiker"), 7: ("Wunder", "Zufall"), 8: ("Gott", "Atheist")
+    }
+    # Sicherheitshalber prüfen, ob val im Dictionary ist
+    if val in names:
+        return names[val][0] if color == "Blau" else names[val][1]
+    return "Unbekannt"
     
 # --- BLOCK 2: LOGIN & SYNCHRONISATION ---
 
