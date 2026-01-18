@@ -189,18 +189,32 @@ if curr_p == st.session_state.user and me["active"]:
             if st.button("Schutz aktivieren"):
                 me["protected"] = True; state["phase"] = "NEXT"; save(state); st.rerun()
 
-        elif played["val"] == 5: # Prediger/Reformator
+        elif played["val"] == 5: # Prediger (Blau) / Reformator (Rot)
+            # Filtert den aktuellen Spieler aus der Liste der möglichen Ziele
+            other_players = [p for p in state["order"] if p != st.session_state.user and players[p]["active"]]
+            
             if not is_doubt:
-                target = st.selectbox("Ziel wählen:", state["order"])
-                if st.button("Karte erneuern"):
-                    players[target]["hand"] = [state["deck"].pop()]; state["phase"] = "NEXT"; save(state); st.rerun()
-            else:
-                t1 = st.selectbox("Spieler 1:", state["order"], key="r1")
-                t2 = st.selectbox("Spieler 2:", state["order"], key="r2")
-                if st.button("Beide Karten erneuern"):
-                    players[t1]["hand"] = [state["deck"].pop()]
-                    players[t2]["hand"] = [state["deck"].pop()]
+                # NORMAL: Nur ein Ziel (Mitspieler)
+                st.info("Effekt: Ein Mitspieler muss seine Karte ablegen und neu ziehen.")
+                target = st.selectbox("Wähle einen Mitspieler:", other_players) if other_players else None
+                if st.button("Karte erneuern") and target:
+                    players[target]["hand"] = [state["deck"].pop()]
+                    state["log"].append(f"🔄 {target} musste durch {played['name']} neu ziehen.")
                     state["phase"] = "NEXT"; save(state); st.rerun()
+            else:
+                # ZWEIFEL: Zwei Ziele (Mitspieler)
+                st.warning("⚖️ ZWEIFELS-BONUS: Wähle zwei Mitspieler!")
+                if len(other_players) >= 2:
+                    t1 = st.selectbox("Erster Mitspieler:", other_players, key="r1")
+                    t2 = st.selectbox("Zweiter Mitspieler:", other_players, key="r2")
+                    if st.button("Beide Karten erneuern"):
+                        players[t1]["hand"] = [state["deck"].pop()]
+                        players[t2]["hand"] = [state["deck"].pop()]
+                        state["log"].append(f"⚖️ Zweifel! {t1} und {t2} mussten neu ziehen.")
+                        state["phase"] = "NEXT"; save(state); st.rerun()
+                else:
+                    st.write("Nicht genügend Mitspieler für den vollen Bonus vorhanden.")
+                    if st.button("Zug beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
 
         elif played["val"] == 6: # Prophet/Agnostiker
             if is_doubt and "seen" not in state:
