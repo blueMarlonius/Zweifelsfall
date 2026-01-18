@@ -3,11 +3,29 @@ import random
 from google.cloud import firestore
 from google.oauth2 import service_account
 
+import streamlit as st
+import random
+from google.cloud import firestore
+from google.oauth2 import service_account
+
 # --- DATENBANK VERBINDUNG ---
+# Dieser Block ersetzt alles bis zum Start von "CARDS_DATA"
 if "db" not in st.session_state:
-    key_dict = st.secrets["textkey"]
-    creds = service_account.Credentials.from_service_account_info(key_dict)
-    st.session_state.db = firestore.Client(credentials=creds)
+    if "textkey" not in st.secrets:
+        st.error("❌ Kritischer Fehler: 'textkey' fehlt in den Streamlit Secrets!")
+        st.info("Bitte gehe in die App-Settings auf Streamlit Cloud und füge deine Firebase-Daten unter 'Secrets' ein.")
+        st.stop()
+    
+    try:
+        # Wir laden die Daten aus den Streamlit Secrets
+        key_info = dict(st.secrets["textkey"])
+        creds = service_account.Credentials.from_service_account_info(key_info)
+        # Wir starten die Verbindung
+        st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
+    except Exception as e:
+        st.error(f"❌ Fehler bei der Datenbankverbindung: {e}")
+        st.write("Bitte prüfe, ob der Private Key in den Secrets korrekt formatiert ist.")
+        st.stop()
 
 db = st.session_state.db
 
