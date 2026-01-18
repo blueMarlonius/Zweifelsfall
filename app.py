@@ -43,7 +43,7 @@ if "user" not in st.session_state:
             st.rerun()
     st.stop()
 
-st_autorefresh(interval=5000, key="sync")
+st_autorefresh(interval=4000, key="sync")
 doc_ref = db.collection("games").document(st.session_state.gid)
 state = doc_ref.get().to_dict()
 
@@ -63,7 +63,7 @@ if st.session_state.user not in players:
         save(state); st.rerun()
     st.stop()
 
-# --- SIEG-LOGIK ---
+# --- GEWINNER-CHECK ---
 alive = [p for p in players if players[p]["active"]]
 if len(alive) == 1 and len(players) > 1:
     st.balloons()
@@ -91,66 +91,10 @@ if me["active"]:
             st.markdown(f"<div style='border:3px solid {c_color}; padding:10px; border-radius:10px; min-height:180px;'><b>{card['name']} ({card['val']})</b><br><small>{card['eff']}</small></div>", unsafe_allow_html=True)
             if state["turn"] == st.session_state.user and len(me["hand"]) > 1:
                 if st.button(f"Spielen", key=f"btn_{i}", use_container_width=True):
-                    played = me["hand"].pop(i)
-                    state["log"].append(f"📢 {st.session_state.user} spielt {played['name']}: {played['eff']}")
+                    played = me["hand"].pop(i) # Karte wird SOFORT entfernt
+                    state["log"].append(f"📢 {st.session_state.user} spielt {played['name']}")
                     
                     if played["val"] == 0:
                         me["hand"].append(state["deck"].pop())
-                        state["log"].append(f"✨ {st.session_state.user} zieht sofort neu.")
                     
-                    if played["val"] in [1, 2, 3, 5, 6]:
-                        st.session_state.pending_action = played
-                    else:
-                        if played["val"] == 4: me["protected"] = True
-                        next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                        state["turn"] = next_p
-                        save(state); st.rerun()
-
-    # 3. INTERAKTIVE AKTIONEN
-    if "pending_action" in st.session_state:
-        card = st.session_state.pending_action
-        st.divider()
-        # Wer kann angegriffen werden?
-        targets = [p for p in players if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
-        
-        if not targets:
-            st.warning("Kein Ziel möglich (alle geschützt)! Karte wird wirkungslos abgelegt.")
-            if st.button("Zug beenden"):
-                next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                state["turn"] = next_p
-                del st.session_state.pending_action; save(state); st.rerun()
-        else:
-            target = st.selectbox("Ziel wählen:", targets)
-            # EFFEKTE
-            if card["val"] == 1: # Raten
-                g = st.number_input("Karte raten (0-8):", 0, 8)
-                if st.button("Angreifen"):
-                    if players[target]["hand"][0]["val"] == g:
-                        players[target]["active"] = False
-                        state["log"].append(f"💀 {target} wurde entlarvt!")
-                    next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                    state["turn"] = next_p
-                    del st.session_state.pending_action; save(state); st.rerun()
-            
-            if card["val"] == 3: # Vergleichen
-                if st.button("Vergleichen"):
-                    val_me = me["hand"][0]["val"]
-                    val_target = players[target]["hand"][0]["val"]
-                    if val_me > val_target: players[target]["active"] = False
-                    elif val_target > val_me: me["active"] = False
-                    state["log"].append(f"⚔️ Vergleich: {st.session_state.user} vs {target}")
-                    next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                    state["turn"] = next_p
-                    del st.session_state.pending_action; save(state); st.rerun()
-
-            if card["val"] == 6: # Tauschen
-                if st.button("Karten tauschen"):
-                    me["hand"][0], players[target]["hand"][0] = players[target]["hand"][0], me["hand"][0]
-                    state["log"].append(f"🔄 Tausch mit {target}")
-                    next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                    state["turn"] = next_p
-                    del st.session_state.pending_action; save(state); st.rerun()
-
-st.divider()
-with st.expander("Protokoll"):
-    for l in reversed(state["log"]): st.write(l)
+                    if played["val"] in [1,
