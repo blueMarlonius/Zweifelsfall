@@ -451,6 +451,28 @@ if state.get("started", False) and state["phase"] == "EFFECT":
         state["phase"] = "TEST"
         save(state); st.rerun()
 
+if state["phase"] == "NEXT":
+    # 1. Wer ist der nächste aktive Spieler?
+    current_idx = state["turn_idx"]
+    next_idx = (current_idx + 1) % len(order)
+    
+    # Überspringe alle, die nicht mehr aktiv sind
+    safety_counter = 0
+    while not players[order[next_idx]]["active"] and safety_counter < len(order):
+        next_idx = (next_idx + 1) % len(order)
+        safety_counter += 1
+    
+    # 2. Status aktualisieren
+    state["turn_idx"] = next_idx
+    state["phase"] = "TEST"  # WICHTIG: Zurück zum Anfang für den nächsten
+    state["active_doubt"] = False # Zweifel-Status zurücksetzen
+    
+    # 3. Schutz für den Spieler, der JETZT dran ist, aufheben
+    players[order[next_idx]]["protected"] = False
+    
+    save(state)
+    st.rerun()
+
 # --- BLOCK 8: RUNDENENDE & SIEGERERMITTLUNG ---
 
 if state.get("started", False) and state["phase"] == "ROUND_END":
