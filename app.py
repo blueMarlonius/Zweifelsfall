@@ -12,23 +12,23 @@ if "db" not in st.session_state:
     st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
 db = st.session_state.db
 
-# --- KARTEN-DATEN (Alle 32 Karten-Typen aus dem PDF) ---
+# --- KARTEN-DATEN (Vollständig aus PDF) ---
 CARD_LIST = [
-    (0, "Tradition", "Blau", "Wer sie am Ende hält, verliert. Ziehe beim Ausspielen neu.", "Menschen glauben an Gott, weil sie die Bräuche ihrer Vorfahren ehren."), [cite: 5, 6, 8]
-    (0, "Indoktrination", "Rot", "Wer sie am Ende hält, verliert. Ziehe beim Ausspielen neu.", "Spiritualität wird als Unvernunft verspottet."), [cite: 10, 11, 13]
-    (1, "Missionar", "Blau", "Rate die Handkarte eines Gegners. Richtig? Er fliegt.", "Die frohe Botschaft der Hoffnung teilen."), [cite: 15, 16]
-    (1, "Aufklärer", "Rot", "Rate Handkarte. (Im Zweifel: Danach noch ein Zug).", "Nur das akzeptieren, was beweisbar ist."), [cite: 18, 19]
-    (2, "Beichtvater", "Blau", "Sieh dir die Handkarte eines Gegners an.", "Geständnis der Fehler verschafft Erleichterung."), [cite: 21, 22, 23]
-    (2, "Psychologe", "Rot", "Sieh dir Handkarte an. (Im Zweifel: Ziehe zusätzlich eine Karte).", "Religion als Projektion menschlicher Wünsche."), [cite: 25, 26, 27]
-    (3, "Mystiker", "Blau", "Vergleiche Karten; der niedrigere Wert scheidet aus.", "Spüren einer transzendenten Realität."), [cite: 29, 30, 31]
-    (3, "Logiker", "Rot", "Vergleiche Karten; (Im Zweifel: Sieg bei Gleichstand).", "Ein gütiger Schöpfer ist mathematisch nicht vereinbar."), [cite: 32, 33, 34]
-    (4, "Eremit", "Blau", "Schutz vor allen Effekten bis zum nächsten Zug.", "Einsamkeit hilft, sich auf das Wesentliche zu konzentrieren."), [cite: 36, 37]
-    (4, "Stoiker", "Rot", "Schutz vor allen Effekten bis zum nächsten Zug.", "Die Welt objektiv akzeptieren, wie sie ist."), [cite: 38, 39]
-    (5, "Prediger", "Blau", "Ein Spieler legt seine Karte ab und zieht neu.", "Die Kraft der Worte öffnet das Herz."), [cite: 41, 42, 43]
-    (6, "Prophet", "Blau", "Tausche Karten mit einem Mitspieler.", "Visionen von einer gerechteren Welt."), [cite: 49, 50, 51]
-    (7, "Wunder", "Blau", "Muss abgelegt werden, wenn man die 8 hält.", "Ereignisse, die wissenschaftliche Erklärungen sprengen."), [cite: 58, 59, 60]
-    (8, "Präsenz (Gott)", "Blau", "Wer sie am Ende hält, gewinnt. Nicht freiwillig ablegbar.", "Vollkommenheit des Seins erkennen."), [cite: 67, 68, 70]
-    (8, "Atheist (Die Leere)", "Rot", "Wer sie am Ende hält, gewinnt.", "Gott als Trost für die eigene Endlichkeit.") [cite: 72, 73, 74]
+    (0, "Tradition", "Blau", "Wer sie am Ende hält, verliert. Ziehe neu.", "Glaube durch Bräuche der Vorfahren."),
+    (0, "Indoktrination", "Rot", "Wer sie am Ende hält, verliert. Ziehe neu.", "Spiritualität als Unvernunft verspottet."),
+    (1, "Missionar", "Blau", "Rate Handkarte eines Gegners. Richtig? Er fliegt.", "Botschaft der Hoffnung teilen."),
+    (1, "Aufklärer", "Rot", "Rate Handkarte. (Im Zweifel: Danach noch ein Zug).", "Nur Akzeptanz des Beweisbaren."),
+    (2, "Beichtvater", "Blau", "Sieh dir die Handkarte eines Gegners an.", "Geständnis bringt Erleichterung."),
+    (2, "Psychologe", "Rot", "Sieh dir Handkarte an. (Zusatzkarte möglich).", "Religion als Projektion von Wünschen."),
+    (3, "Mystiker", "Blau", "Vergleiche Karten; der niedrigere Wert fliegt.", "Spüren einer transzendenten Realität."),
+    (3, "Logiker", "Rot", "Vergleiche Karten; (Sieg bei Gleichstand).", "Gott mathematisch nicht vereinbar."),
+    (4, "Eremit", "Blau", "Schutz vor Effekten bis zum nächsten Zug.", "Fokus auf das Wesentliche."),
+    (4, "Stoiker", "Rot", "Schutz vor Effekten bis zum nächsten Zug.", "Welt objektiv akzeptieren."),
+    (5, "Prediger", "Blau", "Ein Spieler legt Karte ab und zieht neu.", "Worte öffnen das Herz."),
+    (6, "Prophet", "Blau", "Tausche Karten mit einem Mitspieler.", "Visionen einer gerechteren Welt."),
+    (7, "Wunder", "Blau", "Muss abgelegt werden, wenn man die 8 hält.", "Ereignisse jenseits der Wissenschaft."),
+    (8, "Präsenz (Gott)", "Blau", "Wer sie am Ende hält, gewinnt.", "Vollkommenheit in allem erkennen."),
+    (8, "Atheist (Die Leere)", "Rot", "Wer sie am Ende hält, gewinnt.", "Trost für die eigene Endlichkeit.")
 ]
 
 def save(state): db.collection("games").document(st.session_state.gid).set(state)
@@ -78,47 +78,54 @@ if me["active"]:
             me["protected"] = False
             save(state); st.rerun()
 
-    # 2. SPIELEN
+    # 2. HANDKARTEN
     cols = st.columns(len(me["hand"]))
     for i, card in enumerate(me["hand"]):
         with cols[i]:
             c_color = "#1E90FF" if card["color"] == "Blau" else "#FF4500"
-            st.markdown(f"<div style='border:2px solid {c_color}; padding:5px; border-radius:5px;'><b>{card['name']}</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='border:2px solid {c_color}; padding:10px; border-radius:10px;'><b>{card['name']} ({card['val']})</b><br><small>{card['eff']}</small></div>", unsafe_allow_html=True)
             if state["turn"] == st.session_state.user and len(me["hand"]) > 1:
                 if st.button("Spielen", key=f"btn_{i}"):
                     played = me["hand"].pop(i)
                     state["log"].append(f"📢 {st.session_state.user} bekennt: {played['name']}")
                     
-                    # Interaktive Aktionen
                     if played["val"] in [1, 2, 3, 5, 6]:
-                        st.session_state.pending_action = (played, i)
+                        st.session_state.pending_action = played
                     else:
                         if played["val"] == 4: me["protected"] = True
                         alive = [p for p in players if players[p]["active"]]
                         state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
                         save(state); st.rerun()
 
-    # 3. INTERAKTIVE MENÜS
+    # 3. AKTIONEN AUSFÜHREN
     if "pending_action" in st.session_state:
-        card, _ = st.session_state.pending_action
-        target = st.selectbox("Ziel wählen:", [p for p in players if p != st.session_state.user and players[p]["active"]])
+        card = st.session_state.pending_action
+        targets = [p for p in players if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
         
-        if card["val"] == 1: # Missionar/Aufklärer [cite: 16, 18]
-            guess = st.number_input("Wert raten (0-8):", 0, 8)
-            if st.button("Bestätigen"):
-                if players[target]["hand"][0]["val"] == guess:
-                    players[target]["active"] = False
-                    state["log"].append(f"🎯 Erfolg! {target} fliegt raus.")
-                del st.session_state.pending_action
-                save(state); st.rerun()
-
-        if card["val"] == 2: # Beichtvater 
-            st.info(f"{target} hat die Karte: {players[target]['hand'][0]['name']}")
-            if st.button("Ok"): 
-                del st.session_state.pending_action; st.rerun()
+        if not targets:
+            st.warning("Kein gültiges Ziel verfügbar!")
+            if st.button("Zug beenden"): del st.session_state.pending_action; st.rerun()
+        else:
+            target = st.selectbox("Ziel wählen:", targets)
+            
+            # WERT 1: Raten
+            if card["val"] == 1:
+                guess = st.number_input("Handkarte raten (0-8):", 0, 8)
+                if st.button("Raten!"):
+                    if players[target]["hand"][0]["val"] == guess:
+                        players[target]["active"] = False
+                        state["log"].append(f"🎯 Erfolg! {target} fliegt raus.")
+                    del st.session_state.pending_action; save(state); st.rerun()
+            
+            # WERT 6: Tauschen
+            if card["val"] == 6:
+                if st.button("Karten tauschen"):
+                    me["hand"][0], players[target]["hand"][0] = players[target]["hand"][0], me["hand"][0]
+                    state["log"].append(f"🔄 {st.session_state.user} hat mit {target} getauscht.")
+                    del st.session_state.pending_action; save(state); st.rerun()
 
 else:
-    st.error("Ausgeschieden.")
+    st.error("Du bist ausgeschieden.")
 
 with st.expander("Protokoll"):
     for l in reversed(state["log"]): st.write(l)
