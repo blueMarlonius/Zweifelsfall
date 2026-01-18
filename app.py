@@ -1,25 +1,41 @@
 import streamlit as st
 import random
+import base64
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-# --- DATENBANK VERBINDUNG ---
+# --- DATENBANK VERBINDUNG MIT AUTO-REPARATUR ---
 if "db" not in st.session_state:
     if "textkey" not in st.secrets:
-        st.error("❌ 'textkey' nicht in Secrets gefunden.")
+        st.error("❌ 'textkey' fehlt in Secrets!")
         st.stop()
     
     try:
         key_info = dict(st.secrets["textkey"])
         
-        # REPARATUR DES KEYS: Wichtig für den b64decode Fehler!
-        if "private_key" in key_info:
-            key_info["private_key"] = key_info["private_key"].replace("\\n", "\n")
+        # Den Key von allen unsichtbaren Zeichen befreien
+        raw_key = key_info["private_key"].replace("\\n", "\n")
+        
+        # Falls der Key durch Kopieren beschädigt wurde (Padding Fix)
+        # Wir suchen den Teil zwischen den BEGIN/END Markern
+        if "-----BEGIN PRIVATE KEY-----" in raw_key:
+            header = "-----BEGIN PRIVATE KEY-----\n"
+            footer = "\n-----END PRIVATE KEY-----\n"
+            inner_key = raw_key.replace(header, "").replace(footer, "").replace("\n", "").replace(" ", "")
             
+            # Base64 Padding korrigieren (muss durch 4 teilbar sein)
+            missing_padding = len(inner_key) % 4
+            if missing_padding:
+                inner_key += "=" * (4 - missing_padding)
+            
+            # Key wieder zusammenbauen
+            key_info["private_key"] = header + inner_key + footer
+
         creds = service_account.Credentials.from_service_account_info(key_info)
         st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
     except Exception as e:
         st.error(f"❌ Fehler bei der Key-Verarbeitung: {e}")
+        st.info("Tipp: Kopiere den Private Key noch einmal ganz frisch aus der JSON-Datei.")
         st.stop()
 
 db = st.session_state.db
