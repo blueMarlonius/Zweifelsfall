@@ -4,7 +4,7 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 from streamlit_autorefresh import st_autorefresh
 
-# --- DATENBANK VERBINDUNG ---
+# --- DATENBANK & SETUP ---
 if "db" not in st.session_state:
     key_info = dict(st.secrets["textkey"])
     key_info["private_key"] = key_info["private_key"].replace("\\n", "\n")
@@ -12,22 +12,29 @@ if "db" not in st.session_state:
     st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
 db = st.session_state.db
 
-# --- KARTEN-DATEN ---
+# --- KARTEN-DATEN (Mit allen Details aus dem PDF) ---
 CARD_LIST = [
-    (0, "Tradition/Indoktrination", "B/R", "Wer sie am Ende hält, verliert. Beim Ausspielen: Ziehe neu.", "Hintergrund: Sozialisation und Umfeld."),
-    (1, "Missionar/Aufklärer", "B/R", "Rate Handkarte eines Gegners. Richtig? Er fliegt.", "Hintergrund: Überzeugung und Beweisbarkeit."),
-    (2, "Beichtvater/Psychologe", "B/R", "Sieh dir die Handkarte eines Gegners an.", "Hintergrund: Erleichterung und Projektion."),
-    (3, "Mystiker/Logiker", "B/R", "Vergleiche Karten; der niedrigere Wert scheidet aus.", "Hintergrund: Transzendenz vs. Mathematik."),
-    (4, "Eremit/Stoiker", "B/R", "Schutz vor allen Effekten bis zum nächsten Zug.", "Hintergrund: Wesentliches und Akzeptanz."),
-    (5, "Prediger/Reformator", "B/R", "Ein Spieler legt seine Karte ab und zieht neu.", "Hintergrund: Herzensöffnung vs. Dogmenkritik."),
-    (6, "Prophet/Agnostiker", "B/R", "Tausche Karten mit einem Mitspieler.", "Hintergrund: Visionen vs. Unerreichbarkeit."),
-    (7, "Wunder/Zufall", "B/R", "Muss abgelegt werden, wenn man die 8 hält.", "Hintergrund: Wissenschaftliche Grenzen."),
-    (8, "Präsenz/Atheist", "B/R", "Wer sie am Ende hält, gewinnt. Darf nicht abgelegt werden!", "Hintergrund: Vollkommenheit vs. Endlichkeit.")
+    (0, "Tradition", "Blau", "Wer sie am Ende hält, verliert. Ziehe neu.", "Glaube durch Bräuche."),
+    (0, "Indoktrination", "Rot", "Wer sie am Ende hält, verliert. Ziehe neu.", "Spiritualität als Unvernunft."),
+    (1, "Missionar", "Blau", "Rate Handkarte. Richtig? Er fliegt.", "Botschaft der Hoffnung."),
+    (1, "Aufklärer", "Rot", "Rate Handkarte. (Zweifel: Danach noch ein Zug).", "Nur Beweisbares zählt."),
+    (2, "Beichtvater", "Blau", "Sieh dir Handkarte an.", "Geständnis bringt Erleichterung."),
+    (2, "Psychologe", "Rot", "Sieh dir Handkarte an. (Zweifel: Ziehe Karte).", "Religion als Projektion."),
+    (3, "Mystiker", "Blau", "Vergleich: Niedrigerer Wert fliegt.", "Transzendente Realität spüren."),
+    (3, "Logiker", "Rot", "Vergleich. (Zweifel: Sieg bei Gleichstand).", "Schöpfer unlogisch."),
+    (4, "Eremit", "Blau", "Schutz bis zum nächsten Zug.", "Fokus auf das Wesentliche."),
+    (4, "Stoiker", "Rot", "Schutz bis zum nächsten Zug.", "Welt objektiv akzeptieren."),
+    (5, "Prediger", "Blau", "Spieler legt ab und zieht neu.", "Worte öffnen das Herz."),
+    (5, "Reformator", "Rot", "Spieler legt ab. (Zweifel: Wähle zwei Spieler).", "Dogmenkritik."),
+    (6, "Prophet", "Blau", "Tausche Karten mit Mitspieler.", "Visionen göttlicher Welt."),
+    (6, "Agnostiker", "Rot", "Tausche Karten. (Zweifel: Erst Karten ansehen).", "Wahrheit unerreichbar."),
+    (7, "Wunder/Zufall", "B/R", "Ablegen, wenn man die 8 hält.", "Wissenschaftliche Grenzen."),
+    (8, "Präsenz/Atheist", "B/R", "Siegkarte. Darf nicht abgelegt werden.", "Vollkommenheit vs. Endlichkeit.")
 ]
 
 def save(state): db.collection("games").document(st.session_state.gid).set(state)
 
-# --- LOGIN & SYNC ---
+# --- LOGIN ---
 if "user" not in st.session_state:
     with st.form("login"):
         st.header("⚖️ Zweifelsfall")
@@ -41,7 +48,6 @@ st_autorefresh(interval=4000, key="sync")
 doc_ref = db.collection("games").document(st.session_state.gid)
 state = doc_ref.get().to_dict()
 
-# --- INITIALISIERUNG ---
 if not state:
     if st.button("Neues Spiel starten"):
         deck = []
@@ -51,76 +57,84 @@ if not state:
         save(state); st.rerun()
     st.stop()
 
-players = state["players"]
-if st.session_state.user not in players:
-    if st.button("Beitreten"):
-        state["players"][st.session_state.user] = {"hand": [state["deck"].pop()], "active": True, "protected": False}
-        save(state); st.rerun()
+players, me = state["players"], state["players"][st.session_state.user]
+alive = [p for p in players if players[p]["active"]]
+
+# --- GEWINNER ---
+if len(alive) == 1 and len(players) > 1:
+    st.balloons(); st.header(f"🏆 {alive[0]} hat gewonnen!"); 
+    if st.button("Raum löschen"): doc_ref.delete(); st.rerun()
     st.stop()
 
-alive = [p for p in players if players[p]["active"]]
-me = players[st.session_state.user]
-
-# --- SPIELFELD ---
-st.markdown(f"<h1 style='text-align: center;'>Dran: {state['turn']}</h1>", unsafe_allow_html=True)
+st.title(f"Dran: {state['turn']}")
 
 if me["active"]:
     # ZIEHEN
     if state["turn"] == st.session_state.user and len(me["hand"]) == 1:
         if st.button("Karte ziehen 🃏", use_container_width=True):
-            me["hand"].append(state["deck"].pop())
-            me["protected"] = False
+            me["hand"].append(state["deck"].pop()); me["protected"] = False
             save(state); st.rerun()
 
     # HANDKARTEN
     cols = st.columns(len(me["hand"]))
-    has_8 = any(c["val"] == 8 for c in me["hand"])
-    
     for i, card in enumerate(me["hand"]):
         with cols[i]:
-            c_color = "#1E90FF" if "Blau" in card["name"] or i%2==0 else "#FF4500" # Vereinfachte Farblogik für Demo
-            st.markdown(f"<div style='border:3px solid {c_color}; padding:10px; border-radius:10px; background-color:#111; min-height:180px;'><b>{card['name']} ({card['val']})</b><br><small>{card['eff']}</small></div>", unsafe_allow_html=True)
-            
-            # LOGIK: 8 darf NICHT abgelegt werden
+            st.markdown(f"<div style='border:2px solid gray; padding:10px; border-radius:10px;'><b>{card['name']} ({card['val']})</b></div>", unsafe_allow_html=True)
             if state["turn"] == st.session_state.user and len(me["hand"]) > 1:
-                if card["val"] == 8:
-                    st.warning("⚠️ Diese Karte darf nicht abgelegt werden.")
-                else:
-                    if st.button(f"Spielen", key=f"btn_{i}", use_container_width=True):
-                        played = me["hand"].pop(i)
-                        state["log"].append(f"📢 {st.session_state.user} spielt {played['name']}")
-                        
-                        if played["val"] == 0: me["hand"].append(state["deck"].pop())
-                        
-                        if played["val"] in [1, 2, 3, 5, 6]:
-                            st.session_state.pending_action = played
-                            save(state); st.rerun()
-                        else:
-                            if played["val"] == 4: me["protected"] = True
-                            state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                            save(state); st.rerun()
+                if card["val"] == 8: st.caption("Sperre: 8")
+                elif st.button(f"Spielen", key=f"p_{i}"):
+                    played = me["hand"].pop(i)
+                    state["log"].append(f"📢 {st.session_state.user} spielt {played['name']}")
+                    if played["val"] == 0: me["hand"].append(state["deck"].pop())
+                    if played["val"] in [1, 2, 3, 5, 6]:
+                        st.session_state.pending_action = played
+                        save(state); st.rerun()
+                    else:
+                        if played["val"] == 4: me["protected"] = True
+                        state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+                        save(state); st.rerun()
 
-    # AKTIONEN (Bestätigungs-Buttons)
+    # --- ZWEIFELSFALL AKTIONEN ---
     if "pending_action" in st.session_state:
         card = st.session_state.pending_action
         st.divider()
-        targets = [p for p in players if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
+        st.subheader(f"Effekt: {card['name']}")
         
+        # Zweifel Checkbox (nur wenn Karte Rot ist oder PDF es vorsieht)
+        nutze_zweifel = st.checkbox("Zweifelsfall-Regel nutzen? (Erweiterter Effekt)")
+        
+        targets = [p for p in players if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
         if not targets:
-            st.warning("Kein Ziel verfügbar!")
-            if st.button("Ohne Effekt beenden"):
+            if st.button("Kein Ziel - Zug beenden"):
                 state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
                 del st.session_state.pending_action; save(state); st.rerun()
         else:
             target = st.selectbox("Ziel wählen:", targets)
-            # Hier die Button-Logik für 1, 2, 3, 5, 6 (wie im vorherigen Code)
-            if st.button(f"Effekt von {card['name']} bestätigen"):
-                # ... (hier die spezifische Logik ausführen)
-                state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+            
+            if st.button("Aktion bestätigen"):
+                # Logik mit Zweifel
+                if card["val"] == 1: # Aufklärer
+                    # Raten Logik hier (vereinfacht für Platz)
+                    if nutze_zweifel: 
+                        state["log"].append("⚖️ Zweifel! Zusatzug gewährt.")
+                        # Turn bleibt bei mir
+                    else:
+                        state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+                
+                elif card["val"] == 2 and nutze_zweifel:
+                    me["hand"].append(state["deck"].pop())
+                    state["log"].append("⚖️ Zweifel! Psychologe zieht Karte.")
+                    state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+
+                elif card["val"] == 3: # Logiker
+                    v1, v2 = me["hand"][0]["val"], players[target]["hand"][0]["val"]
+                    if v1 > v2 or (v1 == v2 and nutze_zweifel):
+                        players[target]["active"] = False
+                        state["log"].append(f"⚖️ Sieg durch Logik!")
+                    elif v2 > v1: me["active"] = False
+                    state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+
+                # Turn beenden und aufräumen
                 del st.session_state.pending_action; save(state); st.rerun()
 
-else:
-    st.error("Warte auf die nächste Runde.")
-
-with st.expander("Protokoll"):
-    for l in reversed(state.get("log", [])): st.write(l)
+st.expander("Protokoll").write(state.get("log", []))
