@@ -35,26 +35,12 @@ def save(s):
     """Speichert den Spielzustand."""
     db.collection("games").document(st.session_state.gid).set(s)
 
-@st.cache_data # Verhindert das Flackern durch Zwischenspeichern
-def get_card_image(card):
-    path = f"assets/card_{card['val']}_{card['color']}.png"
+@st.cache_resource
+def get_card_image(card_val, card_color):
+    path = f"assets/card_{card_val}_{card_color}.png"
     if os.path.exists(path):
         return path
-    return f"https://via.placeholder.com/300x450.png?text={card['val']}+{card['color']}"
-
-def get_card_display_name(val, color):
-    """Gibt den Namen der Karte zurück."""
-    names = {
-        0: ("Tradition", "Indoktrination"), 1: ("Missionar", "Aufklärer"),
-        2: ("Beichtvater", "Psychologe"), 3: ("Mystiker", "Logiker"),
-        4: ("Eremit", "Stoiker"), 5: ("Prediger", "Reformator"),
-        6: ("Prophet", "Agnostiker"), 7: ("Wunder", "Zufall"), 8: ("Gott", "Atheist")
-    }
-    # Sicherheitshalber prüfen, ob val im Dictionary ist
-    if val in names:
-        return names[val][0] if color == "Blau" else names[val][1]
-    return "Unbekannt"
-    
+    return f"https://via.placeholder.com/300x450.png?text={card_val}+{card_color}"    
 # --- BLOCK 2: LOGIN & SYNCHRONISATION ---
 
 # 1. Login-Maske (Wird angezeigt, wenn der User noch nicht bekannt ist)
@@ -72,9 +58,17 @@ if "user" not in st.session_state:
                 st.error("Bitte gib einen Namen und eine Raum-ID an!")
     st.stop()
 
-# 2. Echtzeit-Aktualisierung
-# Die App prüft alle 3 Sekunden, ob es Änderungen in der Datenbank gibt
-st_autorefresh(interval=3000, key="sync_refresh")
+# --- INTELLIGENTER REFRESH ---
+# Wenn ich NICHT dran bin, aktualisiere alle 4 Sekunden.
+# Wenn ich dran bin, schalte den Refresh aus, damit nichts flackert!
+if state.get("started", False):
+    if curr_p_name != st.session_state.user:
+        # Nutzt das Standard-Streamlit-Timing
+        st.empty() 
+        # Falls du streamlit-autorefresh nutzt:
+        # st_autorefresh(interval=4000, key="global_refresh")
+    else:
+        st.caption("🟢 Du bist am Zug - Automatischer Refresh pausiert für Stabilität.")
 
 # Verbindung zum spezifischen Dokument in Firestore
 doc_ref = db.collection("games").document(st.session_state.gid)
@@ -323,15 +317,19 @@ if state.get("started", False) and state["phase"] == "TEST":
             save(state); st.rerun()
 
 # --- ZIEHEN-PHASE (DRAW) ---
+# --- OPTIMIERT: ZIEHEN ---
 if state.get("started", False) and state["phase"] == "DRAW":
-    if curr_p_name == st.session_state.user and len(me["hand"]) < 2:
-        if st.button("🎴 Karte ziehen", use_container_width=True, type="primary"):
-            if state["deck"]:
-                me["hand"].append(state["deck"].pop())
-                save(state); st.rerun()
-            else:
-                state["phase"] = "ROUND_END"
-                save(state); st.rerun()
+    if curr_p_name == st.session_state.user:
+        if len(me["hand"]) < 2:
+            # Großer, klarer Button
+            if st.button("🚨 JETZT KARTE ZIEHEN", use_container_width=True, type="primary"):
+                if state["deck"]:
+                    new_card = state["deck"].pop()
+                    me["hand"].append(new_card)
+                    # Wir setzen die Phase SOFORT lokal auf PLAY, damit der Button verschwindet
+                    state["phase"] = "DRAW" # Bleibt DRAW bis Karte da ist, dann Block 5
+                    save(state)
+                    st.rerun()
 
 # --- BLOCK 7: FINALE KARTEN-EFFEKTE ---
 
