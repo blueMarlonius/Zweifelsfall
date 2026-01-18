@@ -397,34 +397,46 @@ if state.get("started", False) and state["phase"] == "EFFECT":
                             st.error("Falsch!")
                         state["phase"] = "NEXT"; save(state); st.rerun()
 
-                elif val == 2: # INFORMATION (BEICHTVATER)
-                    t_name = st.selectbox("Ziel wählen:", targets)
-                    # Wir speichern in der session_state, ob wir die Karte schon gesehen haben
-                    if st.button("Karte geheim ansehen"):
-                        st.session_state["viewing_card"] = True
+               elif val == 2: # BEICHTVATER / PSYCHOLOGE
+                t_name = st.selectbox("Ziel wählen:", targets, key="target_select_2")
+    
+                # Zwei-Stufen-Logik mit Session State
+                if st.button("Karte geheim ansehen", key="show_card_btn"):
+                    st.session_state["show_card_active"] = True
+            
+                if st.session_state.get("show_card_active"):
+                    card = players[t_name]["hand"][0]
+                    st.info(f"**{t_name}** hält diese Karte:")
                     
-                    if st.session_state.get("viewing_card"):
-                        card = players[t_name]["hand"][0]
-                        st.info(f"{t_name} hält: **{get_card_display_name(card['val'], card['color'])}** ({card['val']})")
-                        st.image(get_card_image(card), width=150)
-                        
+                    # Karte groß anzeigen
+                    st.image(get_card_image(card), width=200)
+                    st.write(f"Name: {get_card_display_name(card['val'], card['color'])}")
+                    
+                    # Zweifelsfall-Bonus Check
+                    if is_doubt:
+                        st.warning("✨ Zweifel-Bonus: Du darfst eine Karte ziehen!")
+            
+                    # DIESER Button beendet den Zug endgültig
+                    if st.button("Zug beenden & Nächster Spieler", key="finish_turn_2"):
+                        # Bonus ausführen
                         if is_doubt and state["deck"]:
-                            st.warning("Zweifel-Bonus: Du darfst eine Karte extra ziehen!")
+                            me["hand"].append(state["deck"].pop())
                         
-                        if st.button("Verstanden & Zug beenden"):
-                            if is_doubt and state["deck"]:
-                                me["hand"].append(state["deck"].pop())
-                            st.session_state["viewing_card"] = False
-                            state["phase"] = "NEXT"; save(state); st.rerun()
-
-                elif val == 3: # DUELL
-                    t_name = st.selectbox("Ziel wählen:", targets)
-                    if st.button("Duell starten"):
-                        v1, v2 = me["hand"][0]["val"], players[t_name]["hand"][0]["val"]
-                        if v1 > v2: players[t_name]["active"] = False
-                        elif v2 > v1: me["active"] = False
-                        elif v1 == v2 and is_doubt: players[t_name]["active"] = False
-                        state["phase"] = "NEXT"; save(state); st.rerun()
+                        # Zustand aufräumen
+                        st.session_state["show_card_active"] = False
+                        
+                        # Phase wechseln und speichern
+                        state["phase"] = "NEXT"
+                        save(state)
+                        st.rerun()
+                            elif val == 3: # DUELL
+                                t_name = st.selectbox("Ziel wählen:", targets)
+                                if st.button("Duell starten"):
+                                    v1, v2 = me["hand"][0]["val"], players[t_name]["hand"][0]["val"]
+                                    if v1 > v2: players[t_name]["active"] = False
+                                    elif v2 > v1: me["active"] = False
+                                    elif v1 == v2 and is_doubt: players[t_name]["active"] = False
+                                    state["phase"] = "NEXT"; save(state); st.rerun()
 
                 elif val == 5: # AUSTAUSCH
                     num_targets = 2 if is_doubt else 1
