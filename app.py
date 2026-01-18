@@ -195,7 +195,7 @@ if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
 
     # Diese Zeile muss eingerückt sein (4 Leerzeichen vom Rand)
-@st.fragment(run_every=5)
+    @st.fragment(run_every=5)
     def show_opponents_fragment():
         # 1. Daten laden
         doc_ref = db.collection("games").document(st.session_state.gid)
