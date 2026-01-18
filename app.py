@@ -63,4 +63,163 @@ if not state:
 if not state.get("started", False):
     p_names = state.get("order", [])
     st.header(f"Lobby: {st.session_state.gid} ({len(p_names)}/5)")
-    for name in p_
+    for name in p_names: st.write(f"👤 {name}")
+    if st.session_state.user not in state["players"] and len(p_names) < 5:
+        if st.button("Beitreten"):
+            state["players"][st.session_state.user] = {"markers": 0, "active": True, "discard_stack": [], "hand": [], "protected": False}
+            state["order"].append(st.session_state.user); save(state); st.rerun()
+    if p_names and p_names[0] == st.session_state.user:
+        if st.button("🔀 Zufällige Reihenfolge"): random.shuffle(state["order"]); save(state); st.rerun()
+        if st.button("✅ SPIEL STARTEN", type="primary"):
+            state.update({"started": True, "deck": create_deck(), "phase": "TEST"})
+            for n in state["order"]:
+                state["players"][n].update({"active": True, "hand": [state["deck"].pop()], "discard_stack": []})
+            save(state); st.rerun()
+    st.stop()
+
+# --- 5. GAMEPLAY ---
+players = state["players"]
+me = players[st.session_state.user]
+curr_p = state["order"][state["turn_idx"]]
+
+# Zweifel-Check: Lag VOR dem Zug eine rote Karte offen da?
+was_in_doubt = False
+if me["discard_stack"] and me["discard_stack"][-1]["color"] == "Rot":
+    was_in_doubt = True
+
+st.title("⚖️ ZWEIFELSFALL")
+
+# Anzeige Mitspieler & Spielfeld
+cols = st.columns(len(state["order"]))
+for i, name in enumerate(state["order"]):
+    p_data = players[name]
+    with cols[i]:
+        st.markdown(f"**{name}** ({p_data['markers']}⚪)")
+        if not p_data["active"]: st.error("Aus")
+        elif p_data["protected"]: st.caption("🛡️ Schutz")
+        if p_data["discard_stack"]:
+            top = p_data["discard_stack"][-1]
+            st.markdown(f"<div style='border:2px solid {'red' if top['color']=='Rot' else 'blue'}; padding:5px; border-radius:5px; background:#222; font-size:0.8em;'>{top['name']}</div>", unsafe_allow_html=True)
+
+# Deine Hand
+st.divider()
+st.subheader("Deine Hand")
+h_cols = st.columns(2)
+for i, c in enumerate(me["hand"]):
+    with h_cols[i]:
+        st.markdown(f"""<div style="border:3px solid {'red' if c['color']=='Rot' else 'blue'}; padding:15px; border-radius:10px; background:#111;">
+            <h3 style="margin:0;">{c['name']} ({c['val']})</h3>
+            <p style="font-style:italic; color:#aaa; font-size:0.9em;">{c['quote']}</p>
+            <p style="font-size:0.85em;"><b>Effekt:</b> {c['effect']}</p>
+            </div>""", unsafe_allow_html=True)
+
+if curr_p == st.session_state.user and me["active"]:
+    # PHASE 1: TEST
+    if state["phase"] == "TEST":
+        if was_in_doubt:
+            st.warning("⚠️ Überzeugungstest!")
+            if st.button("Karte ziehen"):
+                test_c = state["deck"].pop()
+                state["log"].append(f"⚖️ {st.session_state.user} testet: {test_c['color']}")
+                if test_c["color"] == "Rot":
+                    me["active"] = False; state["phase"] = "NEXT"
+                else: state["phase"] = "DRAW"
+                save(state); st.rerun()
+        else: state["phase"] = "DRAW"; save(state); st.rerun()
+
+    # PHASE 2: DRAW
+    elif state["phase"] == "DRAW":
+        if len(me["hand"]) < 2 and st.button("Karte ziehen"):
+            me["hand"].append(state["deck"].pop()); save(state); st.rerun()
+        if len(me["hand"]) == 2:
+            st.write("Karte ausspielen:")
+            for i, c in enumerate(me["hand"]):
+                if st.button(f"{c['name']} legen", key=f"play_{i}"):
+                    state["active_doubt"] = was_in_doubt
+                    me["discard_stack"].append(me["hand"].pop(i))
+                    me["protected"] = False; state["phase"] = "EFFECT"; save(state); st.rerun()
+
+    # PHASE 3: EFFECT
+    elif state["phase"] == "EFFECT":
+        played = me["discard_stack"][-1]
+        is_doubt = state.get("active_doubt", False)
+        targets = [p for p in state["order"] if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
+
+        if played["val"] == 0: # Tradition/Indoktrination
+            if st.button("Effekt: Bonuskarte ziehen"):
+                me["hand"].append(state["deck"].pop()); state["phase"] = "NEXT"; save(state); st.rerun()
+
+        elif played["val"] == 1: # Missionar/Aufklärer
+            target = st.selectbox("Ziel wählen:", targets) if targets else None
+            guess = st.number_input("Karte raten (0-8):", 0, 8)
+            if st.button("Raten") and target:
+                if players[target]["hand"][0]["val"] == guess:
+                    players[target]["active"] = False; state["log"].append(f"🎯 {target} wurde von {st.session_state.user} enttarnt!")
+                if is_doubt: state["bonus"] = True
+                else: state["phase"] = "NEXT"
+                save(state); st.rerun()
+            if state.get("bonus"):
+                st.success("Zweifel-Bonus: Extrazug?")
+                if st.button("Ja"): del state["bonus"]; state["phase"] = "TEST"; save(state); st.rerun()
+                if st.button("Nein"): del state["bonus"]; state["phase"] = "NEXT"; save(state); st.rerun()
+
+        elif played["val"] == 2: # Beichtvater/Psychologe
+            if "peek" not in state:
+                target = st.selectbox("Ansehen:", targets) if targets else None
+                if st.button("Ansehen") and target:
+                    state["peek"] = f"{target} hat: {players[target]['hand'][0]['name']} ({players[target]['hand'][0]['val']})"
+                    save(state); st.rerun()
+            else:
+                st.code(state["peek"])
+                if is_doubt:
+                    if st.button("Pflicht: Karte ziehen"):
+                        me["hand"].append(state["deck"].pop()); del state["peek"]; state["phase"] = "NEXT"; save(state); st.rerun()
+                elif st.button("Beenden"): del state["peek"]; state["phase"] = "NEXT"; save(state); st.rerun()
+
+        elif played["val"] == 3: # Mystiker/Logiker
+            target = st.selectbox("Vergleichen:", targets) if targets else None
+            if st.button("Vergleichen") and target:
+                my_v, t_v = me["hand"][0]["val"], players[target]["hand"][0]["val"]
+                if my_v > t_v: players[target]["active"] = False
+                elif t_v > my_v: me["active"] = False
+                elif is_doubt: players[target]["active"] = False # Zweifel-Sieg
+                state["phase"] = "NEXT"; save(state); st.rerun()
+
+        elif played["val"] == 4: # Eremit/Stoiker
+            if st.button("Schutz aktivieren"):
+                me["protected"] = True; state["phase"] = "NEXT"; save(state); st.rerun()
+
+        elif played["val"] == 5: # Prediger/Reformator
+            if not is_doubt:
+                target = st.selectbox("Ziel wählen:", state["order"])
+                if st.button("Karte erneuern"):
+                    players[target]["hand"] = [state["deck"].pop()]; state["phase"] = "NEXT"; save(state); st.rerun()
+            else:
+                t1 = st.selectbox("Spieler 1:", state["order"], key="r1")
+                t2 = st.selectbox("Spieler 2:", state["order"], key="r2")
+                if st.button("Beide Karten erneuern"):
+                    players[t1]["hand"] = [state["deck"].pop()]
+                    players[t2]["hand"] = [state["deck"].pop()]
+                    state["phase"] = "NEXT"; save(state); st.rerun()
+
+        elif played["val"] == 6: # Prophet/Agnostiker
+            if is_doubt and "seen" not in state:
+                if st.button("Erst alle Karten ansehen"):
+                    state["seen"] = ", ".join([f"{p}: {players[p]['hand'][0]['val']}" for p in targets])
+                    save(state); st.rerun()
+            if state.get("seen"): st.code(state["seen"])
+            target = st.selectbox("Tauschen mit:", targets) if targets else None
+            if st.button("Tauschen") and target:
+                me["hand"], players[target]["hand"] = players[target]["hand"], me["hand"]
+                if "seen" in state: del state["seen"]
+                state["phase"] = "NEXT"; save(state); st.rerun()
+
+        else:
+            if st.button("Zug beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
+
+    elif state["phase"] == "NEXT":
+        state["turn_idx"] = (state["turn_idx"] + 1) % len(state["order"])
+        state["phase"] = "TEST"; save(state); st.rerun()
+
+with st.expander("Protokoll"):
+    for l in reversed(state.get("log", [])): st.write(l)
