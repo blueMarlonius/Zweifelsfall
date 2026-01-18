@@ -58,20 +58,37 @@ if not state:
         save(state); st.rerun()
     st.stop()
 
-# --- 4. LOBBY ---
-if not state["started"]:
-    p = state["players"]
-    if st.session_state.user not in p:
-        if st.button("Teilnehmen"):
-            p[st.session_state.user] = {"markers": 0, "active": True, "discard_stack": [], "hand": [], "protected": False, "test_done": False}
-            state["order"].append(st.session_state.user); save(state); st.rerun()
-    if state["order"] and state["order"][0] == st.session_state.user:
-        if st.button("🔀 Zufällige Reihenfolge"): random.shuffle(state["order"]); save(state); st.rerun()
-        if st.button("✅ SPIEL STARTEN"):
-            state.update({"started": True, "deck": create_deck(), "phase": "TEST"})
-            for name in state["order"]:
-                state["players"][name].update({"active": True, "hand": [state["deck"].pop()], "discard_stack": [], "protected": False, "test_done": False})
+# --- 4. LOBBY (FIXED: Anzeige der Namen & Zähler) ---
+if not state.get("started", False):
+    st.header("🏠 Spiel-Lobby")
+    p_dict = state.get("players", {})
+    p_names = state.get("order", [])
+    
+    st.subheader(f"Spieler: {len(p_names)} / 5")
+    for name in p_names:
+        st.write(f"👤 {name}")
+        
+    if st.session_state.user not in p_dict and len(p_names) < 5:
+        if st.button("Beitreten"):
+            state["players"][st.session_state.user] = {"markers": 0, "active": True, "discard_stack": [], "hand": [], "protected": False, "test_done": False}
+            state["order"].append(st.session_state.user)
             save(state); st.rerun()
+            
+    if p_names and p_names[0] == st.session_state.user:
+        st.divider()
+        st.info("Du bist der Host.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔀 Zufällige Reihenfolge"): 
+                random.shuffle(state["order"]); save(state); st.rerun()
+        with col2:
+            if st.button("✅ SPIEL STARTEN", type="primary"):
+                state.update({"started": True, "deck": create_deck(), "phase": "TEST"})
+                for name in state["order"]:
+                    state["players"][name].update({"active": True, "hand": [state["deck"].pop()], "discard_stack": [], "protected": False, "test_done": False})
+                save(state); st.rerun()
+    else:
+        st.info("Warten auf den Host...")
     st.stop()
 
 # --- 5. GAMEPLAY ---
@@ -85,12 +102,12 @@ st.title("⚖️ ZWEIFELSFALL")
 cols = st.columns(len(state["order"]))
 for i, name in enumerate(state["order"]):
     with cols[i]:
-        st.write(f"**{name}**")
+        st.markdown(f"**{name}**")
         if not players[name]["active"]: st.error("Aus")
         elif players[name]["protected"]: st.caption("🛡️")
         if players[name]["discard_stack"]:
             top = players[name]["discard_stack"][-1]
-            st.markdown(f"<div style='border:1px solid {'red' if top['color']=='Rot' else 'blue'}; text-align:center;'>{top['name']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='border:1px solid {'red' if top['color']=='Rot' else 'blue'}; text-align:center; padding:3px; border-radius:5px;'>{top['name']}</div>", unsafe_allow_html=True)
 
 # Eigene Hand
 st.divider()
@@ -103,7 +120,7 @@ if curr_p == st.session_state.user and me["active"]:
     # PHASE 1: TEST
     if state["phase"] == "TEST":
         has_red = me["discard_stack"] and me["discard_stack"][-1]["color"] == "Rot"
-        if has_red and not me["test_done"]:
+        if has_red and not me.get("test_done", False):
             st.warning("Überzeugungstest nötig!")
             if st.button("Testen"):
                 test_c = state["deck"].pop()
@@ -125,19 +142,16 @@ if curr_p == st.session_state.user and me["active"]:
             for i, c in enumerate(me["hand"]):
                 if st.button(f"{c['name']} legen", key=f"lay{i}"):
                     me["discard_stack"].append(me["hand"].pop(i))
-                    me["protected"] = False
-                    state["phase"] = "EFFECT"
-                    save(state); st.rerun()
+                    me["protected"] = False; state["phase"] = "EFFECT"; save(state); st.rerun()
 
-    # PHASE 3: EFFECT (FIX: Strikte Trennung von Blau und Rot/Zweifel)
+    # PHASE 3: EFFECT
     elif state["phase"] == "EFFECT":
         played = me["discard_stack"][-1]
         is_red = played["color"] == "Rot"
         st.success(f"Effekt: {played['name']} ({played['color']})")
         targets = [p for p in state["order"] if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
 
-        # SPEZIALFALL: PSYCHOLOGE (Wert 2)
-        if played["val"] == 2:
+        if played["val"] == 2: # Psychologe
             if "peek_done" not in state:
                 target = st.selectbox("Ziel wählen:", targets)
                 if st.button("Ansehen"):
@@ -145,18 +159,16 @@ if curr_p == st.session_state.user and me["active"]:
                     state["peek_done"] = True; save(state); st.rerun()
             else:
                 st.code(state["peek_data"])
-                # HIER IST DIE KORREKTUR:
                 if is_red:
                     st.warning("ZWEIFEL: Du MUSST eine Karte ziehen.")
                     if st.button("Zieh-Pflicht erfüllen"):
                         me["hand"].append(state["deck"].pop())
                         del state["peek_done"], state["peek_data"]; state["phase"] = "NEXT"; save(state); st.rerun()
                 else:
-                    if st.button("Zug beenden (kein Zweifel)"):
+                    if st.button("Zug beenden"):
                         del state["peek_done"], state["peek_data"]; state["phase"] = "NEXT"; save(state); st.rerun()
 
-        # SPEZIALFALL: AUFKLÄRER (Wert 1)
-        elif played["val"] == 1:
+        elif played["val"] == 1: # Aufklärer
             if "guess_done" not in state:
                 target = st.selectbox("Ziel wählen:", targets)
                 guess = st.number_input("Karte raten (0-8):", 0, 8)
@@ -167,27 +179,22 @@ if curr_p == st.session_state.user and me["active"]:
                     state["guess_done"] = True; save(state); st.rerun()
             else:
                 if is_red:
-                    st.info("ZWEIFEL-BONUS: Du darfst einen weiteren Zug machen.")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("Zusatzzug"):
-                            del state["guess_done"]; state["phase"] = "TEST"; save(state); st.rerun()
-                    with col2:
-                        if st.button("Verzichten"):
-                            del state["guess_done"]; state["phase"] = "NEXT"; save(state); st.rerun()
+                    st.info("ZWEIFEL-BONUS: Zusatzzug?")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("Ja"): del state["guess_done"]; state["phase"] = "TEST"; save(state); st.rerun()
+                    with c2:
+                        if st.button("Nein"): del state["guess_done"]; state["phase"] = "NEXT"; save(state); st.rerun()
                 else:
-                    if st.button("Zug beenden"):
-                        del state["guess_done"]; state["phase"] = "NEXT"; save(state); st.rerun()
+                    if st.button("Beenden"): del state["guess_done"]; state["phase"] = "NEXT"; save(state); st.rerun()
 
-        # Andere Effekte
         else:
-            if st.button("Effekt ausgeführt / Zug beenden"):
-                state["phase"] = "NEXT"; save(state); st.rerun()
+            if st.button("Zug beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
 
     elif state["phase"] == "NEXT":
         me["test_done"] = False
         state["turn_idx"] = (state["turn_idx"] + 1) % len(state["order"])
         state["phase"] = "TEST"; save(state); st.rerun()
 
-with st.expander("Log"):
+with st.expander("Protokoll"):
     for l in reversed(state.get("log", [])): st.write(l)
