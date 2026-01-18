@@ -194,12 +194,12 @@ if not state.get("started", False):
 if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
 
-    # 1. DIESEN GANZEN TEIL JETZT IN EIN FRAGMENT PACKEN:
-    @st.fragment(run_every=5) # Das sorgt für den 5-Sekunden-Takt
-def show_opponents_fragment():
-    # 1. Daten frisch laden
-    f_doc = db.collection("games").document(st.session_state.gid).get()
-    f_state = f_doc.to_dict()
+    # Diese Zeile muss eingerückt sein (4 Leerzeichen vom Rand)
+    @st.fragment(run_every=5)
+    def show_opponents_fragment():
+        # Alles hier drin muss nochmals 4 Leerzeichen eingerückt sein
+        f_doc = db.collection("games").document(st.session_state.gid).get()
+        f_state = f_doc.to_dict()
 
         # Die Spalten-Logik (Original aus deinem Code)
         cols = st.columns(len(f_order))
