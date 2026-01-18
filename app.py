@@ -31,20 +31,20 @@ def create_deck():
     random.shuffle(deck)
     return deck
 
-def save(s):
-    """Speichert den Spielzustand."""
-    db.collection("games").document(st.session_state.gid).set(s)
-
-@st.cache_resource
+def save(state):
+    # Nur speichern, wenn wir eine gültige Raum-ID haben
+    if "gid" in st.session_state:
+        db.collection("games").document(st.session_state.gid).set(state)
+        
+@st.cache_data
 def get_card_image(card):
-    # Wir ziehen uns val und color aus dem card-Objekt
+    if not card: 
+        return "https://via.placeholder.com/300x450.png?text=Keine+Karte"
     v = card.get('val', 0)
     c = card.get('color', 'Blau')
     path = f"assets/card_{v}_{c}.png"
-    
     if os.path.exists(path):
         return path
-    # Fallback, falls das Bild fehlt
     return f"https://via.placeholder.com/300x450.png?text={v}+{c}"    
 
 # --- BLOCK 2: LOGIN, DATEN & REFRESH (KOMPLETT) ---
@@ -194,7 +194,7 @@ if not state.get("started", False):
 
     st.stop() # Verhindert das Laden des Spielfelds, solange wir in der Lobby sind
 
-# --- BLOCK 4: DAS SPIELFELD (MITspieler-GRAFIKEN & NAMEN) ---
+# --- BLOCK 4: DAS SPIELFELD (KORRIGIERTE VERSION) ---
 
 if state.get("started", False):
     # Hilfsvariablen
@@ -214,39 +214,45 @@ if state.get("started", False):
             is_turn = (name == curr_p_name)
             border_color = "#FF4B4B" if is_turn else "#333"
             
-            # Name des Spielers und Status-Indikator
+            # Name des Spielers
             st.markdown(f"""
                 <div style="text-align: center; border-bottom: 3px solid {border_color}; padding-bottom: 5px; margin-bottom: 10px;">
                     <b style="font-size: 1.1em;">{name}</b>
                 </div>
             """, unsafe_allow_html=True)
 
-            # Icons für Schutz oder Ausscheiden
+            # Icons für Status
             status_info = ""
-            if not p_data["active"]: status_info += "💀 "
+            if not p_data.get("active", True): status_info += "💀 "
             if p_data.get("protected"): status_info += "🛡️ "
             if status_info: st.write(status_info)
 
-            # Anzeige der obersten Karte im Ablagestapel
-            if p_data["discard_stack"]:
-                top_card = p_data["discard_stack"][-1]
+            # Anzeige der obersten Karte (Sicherheits-Check)
+            # WICHTIG: Prüfen, ob discard_stack existiert UND nicht leer ist
+            stack = p_data.get("discard_stack", [])
+            
+            if stack and len(stack) > 0:
+                top_card = stack[-1]
                 
                 # Grafik anzeigen
                 st.image(get_card_image(top_card), use_container_width=True)
                 
-                # Name der Karte unter der Grafik anzeigen
-                c_name = get_card_display_name(top_card['val'], top_card['color'])
-                st.markdown(f"<p style='text-align:center; font-size:0.9em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
+                # Name der Karte SICHER abrufen
+                try:
+                    c_name = get_card_display_name(top_card['val'], top_card['color'])
+                    st.markdown(f"<p style='text-align:center; font-size:0.9em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
+                except:
+                    st.caption("Unbekannte Karte")
             else:
                 # Platzhalter für leeren Stapel
                 st.markdown("""
-                    <div style="aspect-ratio: 2/3; border: 2px dashed #444; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #444; font-size: 0.8em;">
+                    <div style="aspect-ratio: 2/3; border: 2px dashed #444; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #444; font-size: 0.8em; height: 100px;">
                         Leer
                     </div>
                 """, unsafe_allow_html=True)
             
             # Siegmarker
-            st.markdown(f"<p style='text-align:center;'>⚪ {p_data['markers']}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align:center;'>⚪ {p_data.get('markers', 0)}</p>", unsafe_allow_html=True)
 
     st.divider()
 
@@ -332,18 +338,17 @@ if state.get("started", False) and state["phase"] == "TEST":
 
 # --- ZIEHEN-PHASE (DRAW) ---
 # --- OPTIMIERT: ZIEHEN ---
-if state.get("started", False) and state["phase"] == "DRAW":
-    if curr_p_name == st.session_state.user:
-        if len(me["hand"]) < 2:
-            # Großer, klarer Button
-            if st.button("🚨 JETZT KARTE ZIEHEN", use_container_width=True, type="primary"):
-                if state["deck"]:
-                    new_card = state["deck"].pop()
-                    me["hand"].append(new_card)
-                    # Wir setzen die Phase SOFORT lokal auf PLAY, damit der Button verschwindet
-                    state["phase"] = "DRAW" # Bleibt DRAW bis Karte da ist, dann Block 5
-                    save(state)
-                    st.rerun()
+if state["phase"] == "DRAW" and curr_p_name == st.session_state.user:
+    st.info("--- DEIN ZUG: Bitte Karte ziehen ---")
+    # Der Button wird in einer Spalte zentriert, damit man ihn nicht übersieht
+    if st.button("🎴 KARTE VOM STAPEL ZIEHEN", use_container_width=True, type="primary"):
+        with st.spinner("Ziehe..."):
+            if state["deck"]:
+                new_card = state["deck"].pop()
+                me["hand"].append(new_card)
+                state["phase"] = "PLAY" # Sofort zur nächsten Phase wechseln
+                save(state)
+                st.rerun() # Sofortige Aktualisierung ohne Refresh-Warten
 
 # --- BLOCK 7: FINALE KARTEN-EFFEKTE ---
 
