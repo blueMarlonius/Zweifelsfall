@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+import os
 from google.cloud import firestore
 from google.oauth2 import service_account
 from streamlit_autorefresh import st_autorefresh
@@ -34,8 +35,15 @@ def save(s):
     db.collection("games").document(st.session_state.gid).set(s)
 
 def get_card_image(card):
-    """Findet das Bild im assets-Ordner (z.B. assets/5_rot.png)."""
-    return f"assets/{card['val']}_{card['color'].lower()}.png"
+    # Der Pfad, unter dem das Bild gesucht wird
+    path = f"assets/card_{card['val']}_{card['color']}.png"
+    
+    # Prüfen, ob die Datei wirklich existiert
+    if os.path.exists(path):
+        return path
+    else:
+        # Falls das Bild fehlt: Ein grauer Platzhalter mit Text
+        return f"https://via.placeholder.com/300x450.png?text=Karte+{card['val']}+{card['color']}+fehlt"
     
 # --- BLOCK 2: LOGIN & SYNCHRONISATION ---
 
