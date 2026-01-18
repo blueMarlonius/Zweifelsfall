@@ -97,4 +97,58 @@ if me["active"]:
                     if played["val"] == 0:
                         me["hand"].append(state["deck"].pop())
                     
-                    if played["val"] in [1,
+                    if played["val"] in [1, 2, 3, 5, 6]:
+                        st.session_state.pending_action = played
+                        save(state) # Speicher Zwischenstand mit 1 Karte
+                        st.rerun()
+                    else:
+                        if played["val"] == 4: me["protected"] = True
+                        next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+                        state["turn"] = next_p
+                        save(state); st.rerun()
+
+    # 3. INTERAKTIVE AKTIONEN
+    if "pending_action" in st.session_state:
+        card = st.session_state.pending_action
+        st.divider()
+        targets = [p for p in players if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
+        
+        if not targets:
+            st.warning("Kein Ziel möglich! Karte wurde abgelegt.")
+            if st.button("Zug beenden"):
+                next_p = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+                state["turn"] = next_p
+                del st.session_state.pending_action; save(state); st.rerun()
+        else:
+            target = st.selectbox("Ziel wählen:", targets)
+            if card["val"] == 3 and st.button("Vergleichen"):
+                # Mystiker Logik
+                val_me = me["hand"][0]["val"]
+                val_target = players[target]["hand"][0]["val"]
+                if val_me > val_target: 
+                    players[target]["active"] = False
+                    state["log"].append(f"⚔️ {st.session_state.user} ({val_me}) gewinnt gegen {target} ({val_target})")
+                elif val_target > val_me: 
+                    me["active"] = False
+                    state["log"].append(f"⚔️ {target} ({val_target}) gewinnt gegen {st.session_state.user} ({val_me})")
+                else:
+                    state["log"].append(f"⚔️ Unentschieden beim Vergleich!")
+                
+                next_p = [p for p in players if players[p]["active"]]
+                state["turn"] = next_p[(next_p.index(state["turn"])+1)%len(next_p)] if me["active"] else target
+                del st.session_state.pending_action; save(state); st.rerun()
+            
+            # (Andere Aktionen wie 1, 2, 6 hier einfügen wie im vorherigen Code)
+            if card["val"] == 1:
+                g = st.number_input("Raten (0-8):", 0, 8)
+                if st.button("Raten!"):
+                    if players[target]["hand"][0]["val"] == g: players[target]["active"] = False
+                    next_p = [p for p in players if players[p]["active"]]
+                    state["turn"] = next_p[(next_p.index(st.session_state.user)+1)%len(next_p)]
+                    del st.session_state.pending_action; save(state); st.rerun()
+
+else:
+    st.error("Warte auf das Ende der Runde...")
+
+with st.expander("Protokoll"):
+    for l in reversed(state.get("log", [])): st.write(l)
