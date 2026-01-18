@@ -12,24 +12,26 @@ if "db" not in st.session_state:
     st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
 db = st.session_state.db
 
-# --- KARTEN-DATEN ---
+# --- KARTEN-DATEN (Vollständige Texte) ---
 CARD_LIST = [
-    (0, "Tradition", "Blau", "Wer diese Karte am Ende hält, verliert. Beim Ausspielen: Ziehe eine neue Karte.", "Glauben durch Bräuche der Vorfahren."),
-    (0, "Indoktrination", "Rot", "Wer diese Karte am Ende hält, verliert. Beim Ausspielen: Ziehe eine neue Karte.", "Spiritualität als Unvernunft verspottet."),
-    (1, "Missionar", "Blau", "Rate die Handkarte eines Gegners. Richtig? Er fliegt.", "Die frohe Botschaft teilen."),
-    (1, "Aufklärer", "Rot", "Rate die Handkarte eines Gegners. Richtig? Er fliegt.", "Nur Beweisbares akzeptieren."),
-    (2, "Beichtvater", "Blau", "Sieh dir die Handkarte eines Gegners an.", "Geständnis bringt Erleichterung."),
-    (2, "Psychologe", "Rot", "Sieh dir die Handkarte eines Gegners an.", "Religion als Projektion von Wünschen."),
-    (3, "Mystiker", "Blau", "Vergleiche Karten; der niedrigere Wert scheidet aus.", "Spüren einer transzendenten Realität."),
-    (3, "Logiker", "Rot", "Vergleiche Karten; der niedrigere Wert scheidet aus.", "Schöpfer nicht mit Chaos vereinbar."),
-    (4, "Eremit", "Blau", "Schutz vor allen Effekten bis zum nächsten Zug.", "Fokus auf das Wesentliche."),
-    (4, "Stoiker", "Rot", "Schutz vor allen Effekten bis zum nächsten Zug.", "Welt objektiv akzeptieren."),
-    (5, "Prediger", "Blau", "Ein Spieler legt seine Karte ab und zieht neu.", "Worte öffnen das Herz."),
-    (5, "Reformator", "Rot", "Ein Spieler legt seine Karte ab und zieht neu.", "Dogmen halten Prüfung nicht stand."),
-    (6, "Prophet", "Blau", "Tausche Karten mit einem Mitspieler.", "Visionen einer gerechteren Welt."),
-    (6, "Agnostiker", "Rot", "Tausche Karten mit einem Mitspieler.", "Wahrheit bleibt unerreichbar."),
-    (7, "Wunder/Zufall", "B/R", "Muss abgelegt werden, wenn man die 8 hält.", "Ereignisse jenseits der Wissenschaft."),
-    (8, "Präsenz/Atheist", "B/R", "Wer sie am Ende hält, gewinnt. Nicht freiwillig ablegen.", "Vollkommenheit oder Endlichkeit.")
+    (0, "Tradition", "Blau", "Wer diese Karte am Ende hält, verliert. Beim Ausspielen: Ziehe eine neue Karte.", "Menschen glauben an Gott, weil sie die Bräuche ihrer Vorfahren ehren und darin Geborgenheit finden."),
+    (0, "Indoktrination", "Rot", "Wer diese Karte am Ende hält, verliert. Beim Ausspielen: Ziehe eine neue Karte.", "Menschen glauben nicht an Gott, weil sie in einem Umfeld aufgewachsen sind, das Spiritualität als Unvernunft verspottet."),
+    (1, "Missionar", "Blau", "Rate die Handkarte eines Gegners. Richtig? Er fliegt.", "Menschen glauben an Gott, weil sie die frohe Botschaft der Hoffnung mit anderen teilen wollen."),
+    (1, "Aufklärer", "Rot", "Rate die Handkarte eines Gegners. Richtig? Er fliegt.", "Menschen glauben nicht an Gott, weil die Vernunft uns lehrt, nur das zu akzeptieren, was beweisbar ist."),
+    (2, "Beichtvater", "Blau", "Sieh dir die Handkarte eines Gegners an.", "Menschen glauben an Gott, weil das Geständnis ihrer Fehler ihnen seelische Erleichterung verschafft."),
+    (2, "Psychologe", "Rot", "Sieh dir die Handkarte eines Gegners an.", "Menschen glauben nicht an Gott, weil sie erkennen, dass Religion oft nur eine Projektion menschlicher Wünsche ist."),
+    (3, "Mystiker", "Blau", "Vergleiche Karten; der niedrigere Wert scheidet aus.", "Menschen glauben an Gott, weil sie in Momenten der Stille eine transzendente Realität spüren."),
+    (3, "Logiker", "Rot", "Vergleiche Karten; der niedrigere Wert scheidet aus.", "Ein gütiger Schöpfer ist mathematisch nicht mit dem Chaos der Welt vereinbar."),
+    (4, "Eremit", "Blau", "Schutz vor allen Effekten bis zum nächsten Zug.", "Menschen glauben an Gott, weil sie sich in der Einsamkeit auf das Wesentliche konzentrieren."),
+    (4, "Stoiker", "Rot", "Schutz vor allen Effekten bis zum nächsten Zug.", "Menschen glauben nicht an Gott, weil sie lernen, die Welt so zu akzeptieren, wie sie objektiv ist."),
+    (5, "Prediger", "Blau", "Ein Spieler legt seine Karte ab und zieht neu.", "Die Kraft der Worte öffnet ihr Herz für das Überirdische."),
+    (5, "Reformator", "Rot", "Ein Spieler legt seine Karte ab und zieht neu.", "Alte Dogmen halten einer modernen, kritischen Prüfung nicht stand."),
+    (6, "Prophet", "Blau", "Tausche Karten mit einem Mitspieler.", "Visionen von einer gerechteren, göttlichen Welt."),
+    (6, "Agnostiker", "Rot", "Tausche Karten mit einem Mitspieler.", "Die absolute Wahrheit bleibt für den Verstand unerreichbar."),
+    (7, "Wunder", "Blau", "Muss abgelegt werden, wenn man die 8 hält.", "Ereignisse, die jede wissenschaftliche Erklärung sprengen."),
+    (7, "Zufall", "Rot", "Muss abgelegt werden, wenn man die 8 hält.", "Wir sind das Ergebnis von Milliarden Jahren chemischer Zufälle."),
+    (8, "Präsenz (Gott)", "Blau", "Wer sie am Ende hält, gewinnt. Nicht freiwillig ablegbar.", "Die Vollkommenheit des Seins in allem erkennen."),
+    (8, "Atheist (Die Leere)", "Rot", "Wer sie am Ende hält, gewinnt.", "Gott als Trost für die eigene Endlichkeit.")
 ]
 
 def save(state): db.collection("games").document(st.session_state.gid).set(state)
@@ -38,8 +40,7 @@ def save(state): db.collection("games").document(st.session_state.gid).set(state
 if "user" not in st.session_state:
     with st.form("login"):
         st.header("⚖️ Zweifelsfall")
-        n = st.text_input("Dein Name:")
-        r = st.text_input("Spiel-Raum:")
+        n, r = st.text_input("Dein Name:"), st.text_input("Spiel-Raum:")
         if st.form_submit_button("Beitreten"):
             st.session_state.user, st.session_state.gid = n.strip(), r.strip()
             st.rerun()
@@ -49,6 +50,7 @@ st_autorefresh(interval=4000, key="sync")
 doc_ref = db.collection("games").document(st.session_state.gid)
 state = doc_ref.get().to_dict()
 
+# --- INITIALISIERUNG ---
 if not state:
     if st.button("Neues Spiel starten"):
         deck = []
@@ -65,17 +67,16 @@ if st.session_state.user not in players:
         save(state); st.rerun()
     st.stop()
 
-# --- GEWINNER-CHECK ---
+# --- GEWINNER ---
 alive = [p for p in players if players[p]["active"]]
 if len(alive) == 1 and len(players) > 1:
     st.balloons()
     st.header(f"🏆 {alive[0]} hat gewonnen!")
-    if st.button("Raum löschen & Beenden"):
-        doc_ref.delete(); st.rerun()
+    if st.button("Raum löschen"): doc_ref.delete(); st.rerun()
     st.stop()
 
 me = players[st.session_state.user]
-st.markdown(f"<h1 style='text-align: center; color: #FFD700;'>Dran: {state['turn']}</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align: center;'>Dran: {state['turn']}</h1>", unsafe_allow_html=True)
 
 if me["active"]:
     # 1. ZIEHEN
@@ -85,18 +86,24 @@ if me["active"]:
             me["protected"] = False
             save(state); st.rerun()
 
-    # 2. HANDKARTEN
+    # 2. HANDKARTEN ANZEIGEN
     cols = st.columns(len(me["hand"]))
     for i, card in enumerate(me["hand"]):
         with cols[i]:
             c_color = "#1E90FF" if card["color"] == "Blau" else "#FF4500"
-            st.markdown(f"<div style='border:3px solid {c_color}; padding:10px; border-radius:10px;'><b>{card['name']} ({card['val']})</b></div>", unsafe_allow_html=True)
+            # HIER WIRD DER TEXT WIEDER ANGEZEIGT:
+            st.markdown(f"""<div style='border:3px solid {c_color}; padding:10px; border-radius:10px; background-color:#111; min-height:250px;'>
+                <h3 style='color:{c_color}; margin:0;'>{card['name']} ({card['val']})</h3>
+                <p style='font-size:0.8em; margin:5px 0;'><b>Effekt:</b> {card['eff']}</p>
+                <hr style='margin:5px 0; border:0.5px solid #333;'>
+                <i style='font-size:0.75em; color:#bbb;'>"{card['txt']}"</i>
+                </div>""", unsafe_allow_html=True)
+            
             if state["turn"] == st.session_state.user and len(me["hand"]) > 1:
                 if st.button(f"Spielen", key=f"btn_{i}", use_container_width=True):
                     played = me["hand"].pop(i)
                     state["log"].append(f"📢 {st.session_state.user} spielt {played['name']}")
                     if played["val"] == 0: me["hand"].append(state["deck"].pop())
-                    
                     if played["val"] in [1, 2, 3, 5, 6]:
                         st.session_state.pending_action = played
                         save(state); st.rerun()
@@ -106,71 +113,46 @@ if me["active"]:
                         state["turn"] = alive[idx]
                         save(state); st.rerun()
 
-    # 3. AKTIONEN MIT BESTÄTIGUNG
+    # 3. AKTIONEN
     if "pending_action" in st.session_state:
         card = st.session_state.pending_action
-        st.markdown(f"### Effekt von: {card['name']}")
+        st.divider()
         targets = [p for p in players if p != st.session_state.user and players[p]["active"] and not players[p]["protected"]]
         
         if not targets:
             st.warning("Kein Ziel möglich!")
-            if st.button("Aktion ohne Effekt beenden"):
+            if st.button("Zug ohne Effekt beenden"):
                 idx = (alive.index(st.session_state.user) + 1) % len(alive)
                 state["turn"] = alive[idx]
                 del st.session_state.pending_action; save(state); st.rerun()
         else:
-            target = st.selectbox("Wähle einen Mitspieler:", targets)
-            
-            # WERT 1 (Raten)
+            target = st.selectbox("Ziel wählen:", targets)
             if card["val"] == 1:
-                guess = st.number_input("Karte raten (0-8):", 0, 8)
-                if st.button("Rate-Angriff bestätigen"):
-                    if players[target]["hand"][0]["val"] == guess:
-                        players[target]["active"] = False
-                        state["log"].append(f"🎯 Erfolg! {target} wurde entlarvt.")
-                    else: state["log"].append(f"❌ Fehlversuch gegen {target}.")
-                    idx = (alive.index(st.session_state.user) + 1) % len(alive)
-                    state["turn"] = alive[idx]
+                g = st.number_input("Raten (0-8):", 0, 8)
+                if st.button("Angriff bestätigen"):
+                    if players[target]["hand"][0]["val"] == g: players[target]["active"] = False
+                    state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
                     del st.session_state.pending_action; save(state); st.rerun()
-
-            # WERT 2 (Ansehen)
             if card["val"] == 2:
                 st.info(f"{target} hält: {players[target]['hand'][0]['name']}")
-                if st.button("Information bestätigen & Zug beenden"):
-                    idx = (alive.index(st.session_state.user) + 1) % len(alive)
-                    state["turn"] = alive[idx]
+                if st.button("Gesehen & Beenden"):
+                    state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
                     del st.session_state.pending_action; save(state); st.rerun()
-
-            # WERT 3 (Vergleichen)
             if card["val"] == 3:
                 if st.button("Vergleich bestätigen"):
                     v1, v2 = me["hand"][0]["val"], players[target]["hand"][0]["val"]
                     if v1 > v2: players[target]["active"] = False
                     elif v2 > v1: me["active"] = False
-                    state["log"].append(f"⚔️ {st.session_state.user}({v1}) vs {target}({v2})")
-                    # Turn-Logic nach Ausscheiden
                     new_alive = [p for p in players if players[p]["active"]]
                     state["turn"] = new_alive[0] if len(new_alive) > 0 else state["turn"]
                     del st.session_state.pending_action; save(state); st.rerun()
-
-            # WERT 5 (Ablegen lassen)
-            if card["val"] == 5:
-                if st.button("Ablegen & Neu ziehen lassen"):
-                    old_card = players[target]["hand"].pop()
-                    players[target]["hand"].append(state["deck"].pop())
-                    state["log"].append(f"♻️ {target} musste {old_card['name']} ablegen.")
-                    idx = (alive.index(st.session_state.user) + 1) % len(alive)
-                    state["turn"] = alive[idx]
-                    del st.session_state.pending_action; save(state); st.rerun()
-
-            # WERT 6 (Tauschen)
             if card["val"] == 6:
                 if st.button("Tausch bestätigen"):
                     me["hand"][0], players[target]["hand"][0] = players[target]["hand"][0], me["hand"][0]
-                    state["log"].append(f"🔄 Tausch zwischen {st.session_state.user} und {target}.")
-                    idx = (alive.index(st.session_state.user) + 1) % len(alive)
-                    state["turn"] = alive[idx]
+                    state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
                     del st.session_state.pending_action; save(state); st.rerun()
+else:
+    st.error("Warte auf das Ende der Runde...")
 
 with st.expander("Protokoll"):
     for l in reversed(state.get("log", [])): st.write(l)
