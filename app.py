@@ -36,16 +36,20 @@ def save(s):
     db.collection("games").document(st.session_state.gid).set(s)
 
 @st.cache_resource
-def get_card_image(card_val, card_color):
-    path = f"assets/card_{card_val}_{card_color}.png"
+def get_card_image(card):
+    # Wir ziehen uns val und color aus dem card-Objekt
+    v = card.get('val', 0)
+    c = card.get('color', 'Blau')
+    path = f"assets/card_{v}_{c}.png"
+    
     if os.path.exists(path):
         return path
-    return f"https://via.placeholder.com/300x450.png?text={card_val}+{card_color}"    
-# --- BLOCK 2: LOGIN & SYNCHRONISATION ---
+    # Fallback, falls das Bild fehlt
+    return f"https://via.placeholder.com/300x450.png?text={v}+{c}"    
 
-# --- BLOCK 2: LOGIN & SYNCHRONISATION ---
+# --- BLOCK 2: LOGIN, DATEN & REFRESH (KOMPLETT) ---
 
-# 1. Login-Maske (Wird angezeigt, wenn der User noch nicht bekannt ist)
+# 1. Login-Maske
 if "user" not in st.session_state:
     with st.form("login_form"):
         st.header("⚖️ ZWEIFELSFALL - Login")
@@ -60,11 +64,11 @@ if "user" not in st.session_state:
                 st.error("Bitte gib einen Namen und eine Raum-ID an!")
     st.stop()
 
-# 2. DATEN LADEN (Wichtig: Das muss VOR der Refresh-Logik passieren!)
+# 2. Daten aus Firestore laden
 doc_ref = db.collection("games").document(st.session_state.gid)
 state = doc_ref.get().to_dict()
 
-# 3. Raum-Initialisierung (Falls der Raum neu ist)
+# 3. Raum-Initialisierung falls neu
 if not state:
     if st.button("Neuen Spielraum eröffnen"):
         state = {
@@ -81,24 +85,31 @@ if not state:
         st.rerun()
     st.stop()
 
-# 4. Globale Variablen bereitstellen
+# 4. Globale Variablen definieren (Wichtig für alle folgenden Blöcke!)
 players = state.get("players", {})
 order = state.get("order", [])
 host_name = state.get("host")
-
-# 5. Spieler-Daten für den aktuellen User finden
 me = players.get(st.session_state.user)
-curr_p_name = order[state["turn_idx"]] if state.get("started") and order else None
 
-# --- INTELLIGENTER REFRESH (JETZT WEISS ER, WER DRAN IST) ---
-if state.get("started", False) and curr_p_name:
-    if curr_p_name != st.session_state.user:
-        # Du bist NICHT dran -> Warte und aktualisiere
-        from streamlit_autorefresh import st_autorefresh
-        st_autorefresh(interval=4000, key="global_refresh")
-    else:
-        # Du BIST dran -> Kein Auto-Refresh (verhindert Flackern beim Ziehen/Legen)
-        st.caption("🟢 Du bist am Zug - Automatischer Refresh pausiert für Stabilität.")
+# Wer ist gerade dran?
+curr_p_name = None
+if state.get("started") and order:
+    curr_p_name = order[state["turn_idx"]]
+
+# 5. Intelligenter Refresh
+# Wir aktualisieren automatisch, wenn:
+# - Das Spiel noch nicht gestartet ist (Lobby-Modus)
+# - ODER ich nicht an der Reihe bin
+do_refresh = True
+if state.get("started") and curr_p_name == st.session_state.user:
+    do_refresh = False
+
+if do_refresh:
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=4000, key="global_refresh")
+else:
+    st.caption("🟢 Du bist am Zug - Automatischer Refresh pausiert für Stabilität.")
+    
 # --- BLOCK 3: LOBBY & MANUELLE REIHENFOLGE ---
 
 if not state.get("started", False):
