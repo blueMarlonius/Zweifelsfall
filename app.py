@@ -4,7 +4,7 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 from streamlit_autorefresh import st_autorefresh
 
-# --- DB & SETUP ---
+# --- DB SETUP ---
 if "db" not in st.session_state:
     key_info = dict(st.secrets["textkey"])
     key_info["private_key"] = key_info["private_key"].replace("\\n", "\n")
@@ -12,18 +12,29 @@ if "db" not in st.session_state:
     st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
 db = st.session_state.db
 
-# --- KARTEN-LISTE (32 Karten laut PDF) ---
-DECK_TEMPLATE = [
-    (0, "Tradition/Indoktrination", "B/R", "Verliert am Ende.", "Menschen glauben (nicht), weil..."),
-    (1, "Missionar/Aufklärer", "B/R", "Raten. (Zweifel: Extrazug)", "Menschen glauben (nicht), weil..."),
-    (2, "Beichtvater/Psychologe", "B/R", "Ansehen. (Zweifel: Karte ziehen)", "Menschen glauben (nicht), weil..."),
-    (3, "Mystiker/Logiker", "B/R", "Vergleich.", "Menschen glauben (nicht), weil..."),
-    (4, "Eremit/Stoiker", "B/R", "Schutz.", "Menschen glauben (nicht), weil..."),
-    (5, "Prediger/Reformator", "B/R", "Ablegen lassen.", "Menschen glauben (nicht), weil..."),
-    (6, "Prophet/Agnostiker", "B/R", "Tausch.", "Menschen glauben (nicht), weil..."),
-    (7, "Wunder/Zufall", "B/R", "Ablegen bei 8.", "Menschen glauben (nicht), weil..."),
-    (8, "Präsenz/Atheist", "B/R", "Siegkarte.", "Menschen glauben (nicht), weil...")
-]
+# --- KARTEN-DEFINITION ---
+CARD_DIST = {0: 1, 1: 3, 2: 3, 3: 2, 4: 2, 5: 2, 6: 1, 7: 1, 8: 1}
+CARD_TEXTS = {
+    0: ("Tradition", "Indoktrination", "Wer diese Karte am Ende hält, verliert.", "Menschen glauben (nicht), weil..."),
+    1: ("Missionar", "Aufklärer", "Rate die Handkarte eines Gegners.", "Menschen glauben (nicht), weil..."),
+    2: ("Beichtvater", "Psychologe", "Sieh dir eine Karte an.", "Menschen glauben (nicht), weil..."),
+    3: ("Mystiker", "Logiker", "Vergleiche Handkarten.", "Menschen glauben (nicht), weil..."),
+    4: ("Eremit", "Stoiker", "Schutz bis zum nächsten Zug.", "Menschen glauben (nicht), weil..."),
+    5: ("Prediger", "Reformator", "Ein Spieler legt seine Karte ab.", "Menschen glauben (nicht), weil..."),
+    6: ("Prophet", "Agnostiker", "Tausche Karten.", "Menschen glauben (nicht), weil..."),
+    7: ("Wunder", "Zufall", "Abwerfen bei 8.", "Menschen glauben (nicht), weil..."),
+    8: ("Präsenz", "Atheist", "Siegkarte.", "Menschen glauben (nicht), weil...")
+}
+
+def create_deck():
+    deck = []
+    for val, count in CARD_DIST.items():
+        names = CARD_TEXTS[val]
+        for _ in range(count):
+            deck.append({"val": val, "name": names[0], "color": "Blau", "eff": names[2], "txt": f"Glaube: {names[3]}"})
+            deck.append({"val": val, "name": names[1], "color": "Rot", "eff": names[2], "txt": f"Skepsis: {names[3]}"})
+    random.shuffle(deck)
+    return deck
 
 def save(s): db.collection("games").document(st.session_state.gid).set(s)
 
@@ -31,8 +42,8 @@ def save(s): db.collection("games").document(st.session_state.gid).set(s)
 if "user" not in st.session_state:
     with st.form("login"):
         st.header("⚖️ ZWEIFELSFALL")
-        n, r = st.text_input("Name:"), st.text_input("Raum:")
-        if st.form_submit_button("Beitreten"):
+        n, r = st.text_input("Dein Name:"), st.text_input("Raum-ID:")
+        if st.form_submit_button("Eintreten"):
             st.session_state.user, st.session_state.gid = n.strip(), r.strip()
             st.rerun()
     st.stop()
@@ -43,89 +54,131 @@ state = doc_ref.get().to_dict()
 
 # --- INITIALISIERUNG ---
 if not state:
-    if st.button("Neues Spiel"):
-        deck = [] # 32 Karten mischen [cite: 16, 21]
-        for val, name, _, eff, txt in DECK_TEMPLATE:
-            # Vereinfacht: Jede Karte existiert mehrmals (insg. 32)
-            for color in ["Blau", "Rot"]:
-                deck.append({"val": val, "name": name, "color": color, "eff": eff, "txt": txt})
-        random.shuffle(deck)
-        deck.pop() # Eine Karte verdeckt beiseite [cite: 22]
+    if st.button("Spiel erstellen"):
         state = {
-            "deck": deck, 
-            "players": {st.session_state.user: {"hand": [deck.pop()], "active": True, "visible_card": None}},
-            "turn": st.session_state.user, "log": [], "started": False, "pending_eff": None
+            "started": False, "players": {}, "order": [], "deck": [], 
+            "log": [], "turn": 0, "round_active": False, "markers": {}, "game_over": False
         }
         save(state); st.rerun()
     st.stop()
 
-players = state.get("players", {})
-if st.session_state.user not in players:
-    if st.button("Raum beitreten"):
-        state["players"][st.session_state.user] = {"hand": [state["deck"].pop()], "active": True, "visible_card": None}
-        save(state); st.rerun()
+# --- LOBBY & REIHENFOLGE ---
+if not state["started"]:
+    st.subheader(f"Lobby: {st.session_state.gid}")
+    players = state["players"]
+    if st.session_state.user not in players and len(players) < 5:
+        if st.button("Teilnehmen"):
+            players[st.session_state.user] = {"markers": 0, "active": True}
+            state["order"].append(st.session_state.user)
+            save(state); st.rerun()
+    
+    st.write("Spielerreihenfolge:")
+    for i, p in enumerate(state["order"]): st.write(f"{i+1}. {p}")
+    
+    if state["order"] and state["order"][0] == st.session_state.user:
+        if st.button("Zufällige Reihenfolge"):
+            random.shuffle(state["order"]); save(state); st.rerun()
+        if st.button("REIHENFOLGE BESTÄTIGEN & STARTEN"):
+            state["started"] = True
+            state["round_active"] = True
+            # Runde initialisieren
+            deck = create_deck()
+            state["buried"] = deck.pop() # Eine Karte weglegen [cite: 22]
+            for p in state["order"]:
+                state["players"][p].update({"hand": [deck.pop()], "active": True, "played": None})
+            state["deck"] = deck
+            state["turn"] = 0
+            save(state); st.rerun()
     st.stop()
 
-# --- LOBBY & SIEG ---
-alive = [p for p in players if players[p].get("active")]
-if not state.get("started"):
-    st.info(f"Spieler: {len(players)}/4")
-    if len(players) > 1 and st.button("Starten"):
-        state["started"] = True; save(state); st.rerun()
-    st.stop()
-
-if len(alive) == 1:
-    st.balloons(); st.header(f"🏆 {alive[0]} gewinnt die Runde!"); 
-    st.button("Neu starten", on_click=lambda: doc_ref.delete()); st.stop()
-
+# --- SPIEL-LOGIK ---
+players = state["players"]
+order = state["order"]
+curr_player_name = order[state["turn"]]
 me = players[st.session_state.user]
-st.title(f"Dran: {state['turn']}")
+alive = [p for p in order if players[p]["active"]]
 
-# --- SCHRITT 1: ÜBERZEUGUNGSTEST --- [cite: 27]
-if state["turn"] == st.session_state.user and me["active"]:
-    # Nur wenn eine rote Karte offen vor dir liegt! 
-    if me.get("visible_card") and me["visible_card"]["color"] == "Rot":
-        st.warning("⚠️ ÜBERZEUGUNGSTEST: Rot liegt vor dir!")
-        if st.button("Test-Karte ziehen"):
-            test_card = state["deck"].pop()
-            state["log"].append(f"⚖️ {st.session_state.user} testet: {test_card['color']}")
-            if test_card["color"] == "Rot":
+# RUNDEN-ENDE CHECK
+if state["round_active"] and (len(alive) == 1 or len(state["deck"]) == 0):
+    winner = ""
+    if len(alive) == 1: winner = alive[0]
+    else: # Höchste Karte gewinnt [cite: 38]
+        winner = max(alive, key=lambda x: players[x]["hand"][0]["val"])
+    
+    players[winner]["markers"] += 1
+    state["log"].append(f"🏆 Rundenende! {winner} gewinnt einen Sinnmarker.")
+    state["round_active"] = False
+    
+    if players[winner]["markers"] >= 3:
+        state["game_over"] = True
+    save(state); st.rerun()
+
+# --- ANZEIGE ---
+st.title("⚖️ ZWEIFELSFALL")
+cols = st.columns(len(order))
+for i, p_name in enumerate(order):
+    p_data = players[p_name]
+    with cols[i]:
+        st.write(f"**{p_name}** ({p_data['markers']} ⚪)")
+        if not p_data["active"]: st.error("Ausgeschieden")
+        if p_data.get("played"):
+            c = p_data["played"]
+            color = "red" if c["color"] == "Rot" else "blue"
+            st.markdown(f"<div style='border:2px solid {color}; padding:5px; font-size:0.8em;'>{c['name']}<br>{c['val']}</div>", unsafe_allow_html=True)
+
+# AKTIONEN
+if state["round_active"] and curr_player_name == st.session_state.user and me["active"]:
+    # SCHRITT 1: ÜBERZEUGUNGSTEST [cite: 27, 28]
+    if me.get("played") and me["played"]["color"] == "Rot" and not state.get("test_done"):
+        st.warning("Überzeugungstest!")
+        if st.button("Karte vom Stapel aufdecken"):
+            test_c = state["deck"].pop()
+            state["log"].append(f"⚖️ {st.session_state.user} deckt {test_c['color']} auf.")
+            if test_c["color"] == "Rot":
                 me["active"] = False
-                state["log"].append(f"💀 {st.session_state.user} scheidet aus!")
-                state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+                state["turn"] = (state["turn"] + 1) % len(order)
+            state["test_done"] = True
             save(state); st.rerun()
         st.stop()
 
-    # SCHRITT 2 & 3: ZIEHEN UND BEKENNTNIS [cite: 29, 32]
-    if len(me["hand"]) == 1 and not state.get("pending_eff"):
+    # SCHRITT 2: ZIEHEN & SPIELEN [cite: 29, 30, 31]
+    if len(me["hand"]) == 1:
         if st.button("Karte ziehen"):
             me["hand"].append(state["deck"].pop()); save(state); st.rerun()
-
+    
     if len(me["hand"]) == 2:
-        cols = st.columns(2)
+        st.write("Karte wählen:")
+        c1, c2 = st.columns(2)
         for i, card in enumerate(me["hand"]):
-            with cols[i]:
-                color_code = "red" if card["color"] == "Rot" else "blue"
-                st.markdown(f"<div style='border:3px solid {color_code}; padding:10px;'>{card['name']} ({card['color']})</div>", unsafe_allow_html=True)
-                if st.button(f"Ausspielen", key=f"play_{i}"):
+            with [c1, c2][i]:
+                st.info(f"{card['name']} ({card['color']})\n\n{card['eff']}")
+                if st.button("Spielen", key=f"play_{i}"):
                     played = me["hand"].pop(i)
-                    me["visible_card"] = played # Ersetzt die alte Karte 
-                    state["log"].append(f"💬 {st.session_state.user} bekennt: '{played['txt']}'")
-                    state["pending_eff"] = played
+                    me["played"] = played
+                    state["log"].append(f"💬 {st.session_state.user}: {played['name']} - {played['txt']}")
+                    state["turn"] = (state["turn"] + 1) % len(order)
+                    state["test_done"] = False # Reset für nächsten Zug
                     save(state); st.rerun()
 
-    # EFFEKTE
-    if state.get("pending_eff"):
-        card = state["pending_eff"]
-        st.info(f"Effekt: {card['eff']}")
-        targets = [p for p in players if p != st.session_state.user and players[p]["active"]]
-        if targets:
-            target = st.selectbox("Ziel wählen:", targets)
-            if st.button("Bestätigen"):
-                # Hier Kartenspezifische Logik einfügen...
-                state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-                state["pending_eff"] = None
-                save(state); st.rerun()
+# --- NÄCHSTE RUNDE ODER RANG LISTE ---
+if not state["round_active"]:
+    if state["game_over"]:
+        st.header("🏁 SPIEL ENDE")
+        # Rangliste
+        ranks = sorted(players.items(), key=lambda x: x[1]["markers"], reverse=True)
+        for i, (name, data) in enumerate(ranks):
+            st.write(f"{i+1}. {name}: {data['markers']} Sinnmarker")
+        if st.button("Neustart"): doc_ref.delete(); st.rerun()
+    else:
+        st.write("Nächste Runde starten?")
+        if st.button("Ja"):
+            deck = create_deck()
+            state["buried"] = deck.pop()
+            for p in order:
+                players[p].update({"hand": [deck.pop()], "active": True, "played": None})
+            state["deck"] = deck
+            state["round_active"] = True
+            save(state); st.rerun()
 
 with st.expander("Protokoll"):
-    for l in reversed(state.get("log", [])): st.write(l)
+    for l in reversed(state["log"]): st.write(l)
