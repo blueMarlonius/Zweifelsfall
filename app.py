@@ -36,7 +36,7 @@ def save(state):
     if "gid" in st.session_state:
         db.collection("games").document(st.session_state.gid).set(state)
         
-@st.cache_data
+@st.cache_data(show_spinner=False)  # Das 'False' ist entscheidend!
 def get_card_image(card):
     if not card: 
         return "https://via.placeholder.com/300x450.png?text=Keine+Karte"
@@ -104,11 +104,6 @@ do_refresh = True
 if state.get("started") and curr_p_name == st.session_state.user:
     do_refresh = False
 
-if do_refresh:
-    from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=4000, key="global_refresh")
-else:
-    st.caption("🟢 Du bist am Zug - Automatischer Refresh pausiert für Stabilität.")
     
 # --- BLOCK 3: LOBBY & MANUELLE REIHENFOLGE ---
 
@@ -197,65 +192,60 @@ if not state.get("started", False):
 # --- BLOCK 4: DAS SPIELFELD (KORRIGIERTE VERSION) ---
 
 if state.get("started", False):
-    # Hilfsvariablen
-    players = state["players"]
-    order = state["order"]
-    curr_p_name = order[state["turn_idx"]]
-    
     st.title("⚖️ ZWEIFELSFALL")
 
-    # 1. SPIELFELD: Übersicht der Mitspieler in Spalten
-    cols = st.columns(len(order))
+    # 1. DIESEN GANZEN TEIL JETZT IN EIN FRAGMENT PACKEN:
+    @st.fragment(run_every=5)
+    def show_opponents_fragment():
+        # WICHTIG: Im Fragment laden wir die Daten frisch aus der DB, 
+        # damit die Karten der anderen immer aktuell sind.
+        f_doc = db.collection("games").document(st.session_state.gid).get()
+        f_state = f_doc.to_dict()
+        f_players = f_state.get("players", {})
+        f_order = f_state.get("order", [])
+        f_curr_p = f_order[f_state["turn_idx"]] if f_order else ""
 
-    for i, name in enumerate(order):
-        p_data = players[name]
-        with cols[i]:
-            # Wer ist aktuell am Zug?
-            is_turn = (name == curr_p_name)
-            border_color = "#FF4B4B" if is_turn else "#333"
-            
-            # Name des Spielers
-            st.markdown(f"""
-                <div style="text-align: center; border-bottom: 3px solid {border_color}; padding-bottom: 5px; margin-bottom: 10px;">
-                    <b style="font-size: 1.1em;">{name}</b>
-                </div>
-            """, unsafe_allow_html=True)
+        # Die Spalten-Logik (Original aus deinem Code)
+        cols = st.columns(len(f_order))
 
-            # Icons für Status
-            status_info = ""
-            if not p_data.get("active", True): status_info += "💀 "
-            if p_data.get("protected"): status_info += "🛡️ "
-            if status_info: st.write(status_info)
-
-            # Anzeige der obersten Karte (Sicherheits-Check)
-            # WICHTIG: Prüfen, ob discard_stack existiert UND nicht leer ist
-            stack = p_data.get("discard_stack", [])
-            
-            if stack and len(stack) > 0:
-                top_card = stack[-1]
+        for i, name in enumerate(f_order):
+            p_data = f_players[name]
+            with cols[i]:
+                # Wer ist aktuell am Zug?
+                is_turn = (name == f_curr_p)
+                border_color = "#FF4B4B" if is_turn else "#333"
                 
-                # Grafik anzeigen
-                st.image(get_card_image(top_card), use_container_width=True)
-                
-                # Name der Karte SICHER abrufen
-                try:
-                    c_name = get_card_display_name(top_card['val'], top_card['color'])
-                    st.markdown(f"<p style='text-align:center; font-size:0.9em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
-                except:
-                    st.caption("Unbekannte Karte")
-            else:
-                # Platzhalter für leeren Stapel
-                st.markdown("""
-                    <div style="aspect-ratio: 2/3; border: 2px dashed #444; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #444; font-size: 0.8em; height: 100px;">
-                        Leer
+                # DEIN ORIGINALER HTML-CODE:
+                st.markdown(f"""
+                    <div style="text-align: center; border-bottom: 3px solid {border_color}; padding-bottom: 5px; margin-bottom: 10px;">
+                        <b style="font-size: 1.1em;">{name}</b>
                     </div>
                 """, unsafe_allow_html=True)
-            
-            # Siegmarker
-            st.markdown(f"<p style='text-align:center;'>⚪ {p_data.get('markers', 0)}</p>", unsafe_allow_html=True)
+
+                # Icons für Status
+                status_info = ""
+                if not p_data.get("active", True): status_info += "💀 "
+                if p_data.get("protected"): status_info += "🛡️ "
+                if status_info: st.write(status_info)
+
+                # Anzeige der obersten Karte
+                stack = p_data.get("discard_stack", [])
+                if stack:
+                    top_card = stack[-1]
+                    st.image(get_card_image(top_card), use_container_width=True)
+                    c_name = get_card_display_name(top_card['val'], top_card['color'])
+                    st.markdown(f"<p style='text-align:center; font-size:0.9em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
+                else:
+                    # Dein Platzhalter für leeren Stapel
+                    st.markdown('<div style="height:100px; border:2px dashed #444; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#444; font-size:0.8em;">Leer</div>', unsafe_allow_html=True)
+                
+                # Siegmarker
+                st.markdown(f"<p style='text-align:center;'>⚪ {p_data.get('markers', 0)}</p>", unsafe_allow_html=True)
+
+    # 2. JETZT DAS FRAGMENT AUFRUFEN:
+    show_opponents_fragment()
 
     st.divider()
-
 # --- BLOCK 5: DEINE HANDKARTEN (NUR GRAFIK & NAME) ---
 
 def get_card_display_name(val, color):
