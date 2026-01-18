@@ -195,15 +195,11 @@ if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
 
     # 1. DIESEN GANZEN TEIL JETZT IN EIN FRAGMENT PACKEN:
-    @st.fragment(run_every=5)
-    def show_opponents_fragment():
-        # WICHTIG: Im Fragment laden wir die Daten frisch aus der DB, 
-        # damit die Karten der anderen immer aktuell sind.
-        f_doc = db.collection("games").document(st.session_state.gid).get()
-        f_state = f_doc.to_dict()
-        f_players = f_state.get("players", {})
-        f_order = f_state.get("order", [])
-        f_curr_p = f_order[f_state["turn_idx"]] if f_order else ""
+    @st.fragment(run_every=5) # Das sorgt für den 5-Sekunden-Takt
+def show_opponents_fragment():
+    # 1. Daten frisch laden
+    f_doc = db.collection("games").document(st.session_state.gid).get()
+    f_state = f_doc.to_dict()
 
         # Die Spalten-Logik (Original aus deinem Code)
         cols = st.columns(len(f_order))
