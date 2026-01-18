@@ -43,6 +43,8 @@ def get_card_image(card_val, card_color):
     return f"https://via.placeholder.com/300x450.png?text={card_val}+{card_color}"    
 # --- BLOCK 2: LOGIN & SYNCHRONISATION ---
 
+# --- BLOCK 2: LOGIN & SYNCHRONISATION ---
+
 # 1. Login-Maske (Wird angezeigt, wenn der User noch nicht bekannt ist)
 if "user" not in st.session_state:
     with st.form("login_form"):
@@ -58,28 +60,16 @@ if "user" not in st.session_state:
                 st.error("Bitte gib einen Namen und eine Raum-ID an!")
     st.stop()
 
-# --- INTELLIGENTER REFRESH ---
-# Wenn ich NICHT dran bin, aktualisiere alle 4 Sekunden.
-# Wenn ich dran bin, schalte den Refresh aus, damit nichts flackert!
-if state.get("started", False):
-    if curr_p_name != st.session_state.user:
-        # Nutzt das Standard-Streamlit-Timing
-        st.empty() 
-        # Falls du streamlit-autorefresh nutzt:
-        # st_autorefresh(interval=4000, key="global_refresh")
-    else:
-        st.caption("🟢 Du bist am Zug - Automatischer Refresh pausiert für Stabilität.")
-
-# Verbindung zum spezifischen Dokument in Firestore
+# 2. DATEN LADEN (Wichtig: Das muss VOR der Refresh-Logik passieren!)
 doc_ref = db.collection("games").document(st.session_state.gid)
 state = doc_ref.get().to_dict()
 
-# 3. Raum-Initialisierung
+# 3. Raum-Initialisierung (Falls der Raum neu ist)
 if not state:
     if st.button("Neuen Spielraum eröffnen"):
         state = {
             "started": False,
-            "host": st.session_state.user, # Der Ersteller wird fest als Host gespeichert
+            "host": st.session_state.user,
             "players": {},
             "order": [],
             "deck": [],
@@ -91,11 +81,24 @@ if not state:
         st.rerun()
     st.stop()
 
-# 4. Globale Variablen für die folgenden Blöcke bereitstellen
+# 4. Globale Variablen bereitstellen
 players = state.get("players", {})
 order = state.get("order", [])
 host_name = state.get("host")
 
+# 5. Spieler-Daten für den aktuellen User finden
+me = players.get(st.session_state.user)
+curr_p_name = order[state["turn_idx"]] if state.get("started") and order else None
+
+# --- INTELLIGENTER REFRESH (JETZT WEISS ER, WER DRAN IST) ---
+if state.get("started", False) and curr_p_name:
+    if curr_p_name != st.session_state.user:
+        # Du bist NICHT dran -> Warte und aktualisiere
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=4000, key="global_refresh")
+    else:
+        # Du BIST dran -> Kein Auto-Refresh (verhindert Flackern beim Ziehen/Legen)
+        st.caption("🟢 Du bist am Zug - Automatischer Refresh pausiert für Stabilität.")
 # --- BLOCK 3: LOBBY & MANUELLE REIHENFOLGE ---
 
 if not state.get("started", False):
