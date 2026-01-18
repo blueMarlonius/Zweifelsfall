@@ -4,154 +4,135 @@ import base64
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-# --- DATENBANK VERBINDUNG MIT AUTO-REPARATUR ---
+# --- DATENBANK VERBINDUNG (ROBUST) ---
 if "db" not in st.session_state:
-    if "textkey" not in st.secrets:
-        st.error("❌ 'textkey' fehlt in Secrets!")
-        st.stop()
-    
     try:
         key_info = dict(st.secrets["textkey"])
-        
-        # Den Key von allen unsichtbaren Zeichen befreien
+        # Key-Reparatur
         raw_key = key_info["private_key"].replace("\\n", "\n")
-        
-        # Falls der Key durch Kopieren beschädigt wurde (Padding Fix)
-        # Wir suchen den Teil zwischen den BEGIN/END Markern
         if "-----BEGIN PRIVATE KEY-----" in raw_key:
-            header = "-----BEGIN PRIVATE KEY-----\n"
-            footer = "\n-----END PRIVATE KEY-----\n"
-            inner_key = raw_key.replace(header, "").replace(footer, "").replace("\n", "").replace(" ", "")
+            header, footer = "-----BEGIN PRIVATE KEY-----\n", "\n-----END PRIVATE KEY-----\n"
+            inner = raw_key.replace(header, "").replace(footer, "").replace("\n", "").replace(" ", "")
+            missing_padding = len(inner) % 4
+            if missing_padding: inner += "=" * (4 - missing_padding)
+            key_info["private_key"] = header + inner + footer
             
-            # Base64 Padding korrigieren (muss durch 4 teilbar sein)
-            missing_padding = len(inner_key) % 4
-            if missing_padding:
-                inner_key += "=" * (4 - missing_padding)
-            
-            # Key wieder zusammenbauen
-            key_info["private_key"] = header + inner_key + footer
-
         creds = service_account.Credentials.from_service_account_info(key_info)
         st.session_state.db = firestore.Client(credentials=creds, project=key_info["project_id"])
     except Exception as e:
-        st.error(f"❌ Fehler bei der Key-Verarbeitung: {e}")
-        st.info("Tipp: Kopiere den Private Key noch einmal ganz frisch aus der JSON-Datei.")
+        st.error(f"Verbindungsfehler: {e}")
         st.stop()
 
 db = st.session_state.db
 
-# --- SPIEL-DATEN (32 Karten laut Anleitung) ---
-def build_deck():
-    # val, name, color, effect
-    base_cards = [
-        (0, "Tradition", "Blau", "Wer sie am Ende hält, verliert."),
-        (1, "Missionar", "Blau", "Rate Handkarte eines Gegners."),
-        (2, "Beichtvater", "Blau", "Sieh dir eine Handkarte an."),
-        (3, "Richter", "Rot", "Vergleiche Handkarten."),
-        (4, "Eremit", "Blau", "Schutz bis zum nächsten Zug."),
-        (5, "Abt", "Rot", "Gegner muss Karte ablegen."),
-        (6, "Vision", "Rot", "Tausche Karte mit Mitspieler."),
-        (7, "Wunder", "Blau", "Ablegen, wenn man die 8 hält."),
-        (8, "Gott", "Blau", "Wer sie am Ende hält, gewinnt.")
-    ]
-    deck = []
-    for c in base_cards:
-        # Wir füllen auf ca. 32 Karten auf
-        count = 4 if c[0] == 1 else 3 
-        for _ in range(count):
-            deck.append({"val": c[0], "name": c[1], "color": c[2], "text": c[3]})
-    random.shuffle(deck)
-    return deck
-
-# --- HILFSFUNKTIONEN ---
+# --- HILFSFUNKTIONEN FÜR FIRESTORE ---
 def get_state(gid):
-    doc = db.collection("games").document(gid).get()
-    return doc.to_dict()
+    if not gid: return None
+    try:
+        doc = db.collection("games").document(gid).get()
+        return doc.to_dict() if doc.exists else None
+    except Exception:
+        return None # Gibt None zurück statt abzustürzen
 
 def save_state(gid, state):
     db.collection("games").document(gid).set(state)
 
+# --- SPIEL-KONFIGURATION ---
+CARDS = []
+for c in [(0,"Tradition","Blau"),(1,"Missionar","Blau"),(2,"Beichtvater","Blau"),(3,"Richter","Rot"),(4,"Eremit","Blau"),(5,"Abt","Rot"),(6,"Vision","Rot"),(7,"Wunder","Blau"),(8,"Gott","Blau")]:
+    CARDS.extend([{"val":c[0],"name":c[1],"color":c[2]}] * 3)
+
 # --- APP OBERFLÄCHE ---
-st.set_page_config(page_title="Zweifelsfall Multiplayer", page_icon="⚖️")
-st.title("⚖️ Zweifelsfall")
+st.set_page_config(page_title="Zweifelsfall", layout="centered")
+st.title("⚖️ Zweifelsfall Online")
 
 if "user" not in st.session_state:
     st.session_state.user = st.text_input("Dein Name:").strip()
-    st.session_state.gid = st.text_input("Spiel-Raum Name:").strip()
+    st.session_state.gid = st.text_input("Spiel-Raum (z.B. Tisch1):").strip()
     if st.button("Beitreten"):
-        if st.session_state.user and st.session_state.gid:
-            st.rerun()
+        if st.session_state.user and st.session_state.gid: st.rerun()
 else:
-    gid = st.session_state.gid
-    state = get_state(gid)
+    state = get_state(st.session_state.gid)
 
+    # SPIEL INITIALISIEREN
     if not state:
-        if st.button("Neues Spiel starten"):
-            deck = build_deck()
-            state = {
+        if st.button("Neues Spiel im Raum erstellen"):
+            deck = list(CARDS)
+            random.shuffle(deck)
+            new_state = {
                 "deck": deck,
                 "players": {st.session_state.user: {"hand": [deck.pop()], "active": True, "played": None}},
                 "turn": st.session_state.user,
-                "log": [f"Spiel von {st.session_state.user} gestartet."]
+                "log": [f"{st.session_state.user} hat das Spiel gestartet."]
             }
-            save_state(gid, state)
+            save_state(st.session_state.gid, new_state)
             st.rerun()
     else:
+        # SPIELER-LOGIK
         players = state["players"]
         if st.session_state.user not in players:
-            if st.button("Mitspielen"):
+            if st.button("Als Mitspieler beitreten"):
                 state["players"][st.session_state.user] = {"hand": [state["deck"].pop()], "active": True, "played": None}
-                save_state(gid, state)
+                save_state(st.session_state.gid, state)
                 st.rerun()
 
+        # PRÜFUNG: WER HAT GEWONNEN?
+        active_players = [p for p in players if players[p]["active"]]
+        if len(active_players) == 1:
+            st.balloons()
+            st.success(f"🏆 {active_players[0]} hat gewonnen!")
+            if st.button("Neues Spiel"):
+                db.collection("games").document(st.session_state.gid).delete()
+                st.rerun()
+            st.stop()
+
+        # DAS SPIELFELD
         me = players[st.session_state.user]
-        
-        # Spielanzeige
-        st.sidebar.write(f"Raum: **{gid}**")
-        st.sidebar.write(f"Dran: **{state['turn']}**")
-        
+        st.write(f"Du spielst als: **{st.session_state.user}**")
+        st.write(f"Aktuell am Zug: **{state['turn']}**")
+
         if me["active"]:
-            # SCHRITT 1: Überzeugungstest
+            # SCHRITT 1: ZWEIFELSFALL TEST
             if me["played"] and me["played"]["color"] == "Rot":
-                st.warning("Prüfe deine Überzeugung (Zweifelsfall)!")
+                st.warning("⚠️ Rote Karte vor dir! Überzeugungstest nötig.")
                 if st.button("Test-Karte ziehen"):
-                    test = state["deck"].pop()
-                    state["log"].append(f"{st.session_state.user} testet: {test['name']} ({test['color']})")
-                    if test["color"] == "Rot":
+                    test_card = state["deck"].pop()
+                    state["log"].append(f"TEST {st.session_state.user}: {test_card['name']} ({test_card['color']})")
+                    if test_card["color"] == "Rot":
                         me["active"] = False
-                        state["log"].append(f"💀 {st.session_state.user} ist ausgeschieden!")
-                        # Nächster Spieler
-                        alive = [p for p in players if players[p]["active"]]
-                        state["turn"] = alive[0] if alive else ""
-                    save_state(gid, state)
+                        state["log"].append(f"💀 {st.session_state.user} scheitert!")
+                        state["turn"] = active_players[(active_players.index(st.session_state.user)+1)%len(active_players)]
+                    save_state(st.session_state.gid, state)
                     st.rerun()
-            
-            # SCHRITT 2: Normaler Zug
+
+            # SCHRITT 2: NORMALER ZUG
             elif state["turn"] == st.session_state.user:
                 if len(me["hand"]) < 2:
                     if st.button("Karte ziehen"):
                         me["hand"].append(state["deck"].pop())
-                        save_state(gid, state)
+                        save_state(st.session_state.gid, state)
                         st.rerun()
                 else:
-                    cols = st.columns(2)
+                    st.write("Wähle dein Bekenntnis:")
+                    c1, c2 = st.columns(2)
                     for i, card in enumerate(me["hand"]):
-                        if cols[i].button(f"{card['name']} ({card['color']})"):
+                        col = c1 if i == 0 else c2
+                        if col.button(f"{card['name']} ({card['color']})", key=f"play_{i}"):
                             played = me["hand"].pop(i)
                             me["played"] = played
-                            state["log"].append(f"📢 {st.session_state.user} bekennt: {played['name']}")
+                            state["log"].append(f"📢 {st.session_state.user}: {played['name']}")
                             # Zug weitergeben
-                            alive = [p for p in players if players[p]["active"]]
-                            idx = (alive.index(st.session_state.user) + 1) % len(alive)
-                            state["turn"] = alive[idx]
-                            save_state(gid, state)
+                            idx = (active_players.index(st.session_state.user) + 1) % len(active_players)
+                            state["turn"] = active_players[idx]
+                            save_state(st.session_state.gid, state)
                             st.rerun()
             
+            # HANDKARTE
             st.write("---")
             st.subheader("Deine Handkarte:")
-            st.success(f"{me['hand'][0]['name']} (Wert {me['hand'][0]['val']})")
+            st.info(f"**{me['hand'][0]['name']}** ({me['hand'][0]['color']})")
         else:
-            st.error("Du bist ausgeschieden.")
+            st.error("Du bist ausgeschieden. Warte auf die nächste Runde.")
 
         if st.button("🔄 Aktualisieren"):
             st.rerun()
