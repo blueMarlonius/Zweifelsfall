@@ -350,14 +350,13 @@ if state["phase"] == "DRAW" and curr_p_name == st.session_state.user:
                 save(state)
                 st.rerun() # Sofortige Aktualisierung ohne Refresh-Warten
 
-# --- BLOCK 7: FINALE KARTEN-EFFEKTE ---
+# --- BLOCK 7: FINALE KARTEN-EFFEKTE (OPTIMIERT) ---
 
 if state.get("started", False) and state["phase"] == "EFFECT":
     if curr_p_name == st.session_state.user:
-        # Die gespielte Karte liegt oben auf dem Ablagestapel
         played_card = me["discard_stack"][-1]
         val = played_card["val"]
-        is_doubt = state.get("active_doubt", False) # Wurde in Block 5 gesetzt
+        is_doubt = state.get("active_doubt", False)
         
         st.subheader(f"Effekt: {get_card_display_name(val, played_card['color'])}")
 
@@ -368,27 +367,22 @@ if state.get("started", False) and state["phase"] == "EFFECT":
                 if st.button("Karte ziehen & Zug beenden"):
                     if state["deck"]: me["hand"].append(state["deck"].pop())
                     state["phase"] = "NEXT"; save(state); st.rerun()
-            
             elif val == 4:
                 me["protected"] = True
-                st.success("Immunität aktiv! Keiner kann dich als Ziel wählen.")
+                st.success("Immunität aktiv!")
                 if st.button("Zug beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
-            
             elif val == 8 and played_card["color"] == "Blau":
                 st.error("Regelverstoß: Die blaue 8 darf niemals freiwillig gelegt werden!")
-                # (Hier könnte man eine Strafe einbauen oder den Zug rückgängig machen)
-                if st.button("Zug dennoch beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
-            
+                if st.button("Strafe akzeptieren & Beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
             else: # Karte 7 oder rote 8
                 if st.button("Zug beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
 
         # --- WERTE MIT ZIELWAHL (1, 2, 3, 5, 6) ---
         else:
-            # Ziele filtern (aktiv und nicht geschützt)
             targets = [n for n in order if n != st.session_state.user and players[n]["active"] and not players[n].get("protected")]
             
             if not targets:
-                st.warning("Keine gültigen Ziele verfügbar.")
+                st.warning("Keine gültigen Ziele (alle geschützt oder raus).")
                 if st.button("Effekt verfällt & Beenden"): state["phase"] = "NEXT"; save(state); st.rerun()
             else:
                 if val == 1: # ELIMINATOR
@@ -397,23 +391,31 @@ if state.get("started", False) and state["phase"] == "EFFECT":
                     if st.button("Raten"):
                         if players[t_name]["hand"][0]["val"] == guess:
                             players[t_name]["active"] = False
-                            st.success(f"Erfolg! {t_name} ist ausgeschieden.")
-                            # Zweifelsfall-Bonus: Freiwilliger Extrazug
+                            st.success(f"Erfolg! {t_name} ist raus.")
                             if is_doubt: st.session_state["extra_turn_granted"] = True
                         else:
-                            st.error(f"Falsch! {t_name} hält nicht die {guess}.")
+                            st.error("Falsch!")
                         state["phase"] = "NEXT"; save(state); st.rerun()
 
-                elif val == 2: # INFORMATION
+                elif val == 2: # INFORMATION (BEICHTVATER)
                     t_name = st.selectbox("Ziel wählen:", targets)
+                    # Wir speichern in der session_state, ob wir die Karte schon gesehen haben
                     if st.button("Karte geheim ansehen"):
+                        st.session_state["viewing_card"] = True
+                    
+                    if st.session_state.get("viewing_card"):
                         card = players[t_name]["hand"][0]
-                        st.info(f"{t_name} hält: {get_card_display_name(card['val'], card['color'])}")
-                        # Zweifelsfall-Bonus: Zusätzliche Karte ziehen
+                        st.info(f"{t_name} hält: **{get_card_display_name(card['val'], card['color'])}** ({card['val']})")
+                        st.image(get_card_image(card), width=150)
+                        
                         if is_doubt and state["deck"]:
-                            me["hand"].append(state["deck"].pop())
-                            st.toast("Zweifel-Bonus: Eine Karte extra gezogen!")
-                        if st.button("Verstanden"): state["phase"] = "NEXT"; save(state); st.rerun()
+                            st.warning("Zweifel-Bonus: Du darfst eine Karte extra ziehen!")
+                        
+                        if st.button("Verstanden & Zug beenden"):
+                            if is_doubt and state["deck"]:
+                                me["hand"].append(state["deck"].pop())
+                            st.session_state["viewing_card"] = False
+                            state["phase"] = "NEXT"; save(state); st.rerun()
 
                 elif val == 3: # DUELL
                     t_name = st.selectbox("Ziel wählen:", targets)
@@ -421,8 +423,7 @@ if state.get("started", False) and state["phase"] == "EFFECT":
                         v1, v2 = me["hand"][0]["val"], players[t_name]["hand"][0]["val"]
                         if v1 > v2: players[t_name]["active"] = False
                         elif v2 > v1: me["active"] = False
-                        elif v1 == v2 and is_doubt: # Zweifel-Bonus: Sieg bei Gleichstand
-                            players[t_name]["active"] = False
+                        elif v1 == v2 and is_doubt: players[t_name]["active"] = False
                         state["phase"] = "NEXT"; save(state); st.rerun()
 
                 elif val == 5: # AUSTAUSCH
@@ -430,7 +431,6 @@ if state.get("started", False) and state["phase"] == "EFFECT":
                     t_names = st.multiselect(f"Wähle {num_targets} Ziel(e):", targets, max_selections=num_targets)
                     if st.button("Austausch erzwingen") and len(t_names) == num_targets:
                         for tn in t_names:
-                            # Karte ablegen (ohne Effekt) und neu ziehen
                             players[tn]["discard_stack"].append(players[tn]["hand"].pop())
                             if state["deck"]: players[tn]["hand"].append(state["deck"].pop())
                         state["phase"] = "NEXT"; save(state); st.rerun()
@@ -446,50 +446,40 @@ if state.get("started", False) and state["phase"] == "EFFECT":
                         me["hand"][0], players[t_name]["hand"][0] = players[t_name]["hand"][0], me["hand"][0]
                         state["phase"] = "NEXT"; save(state); st.rerun()
 
-    # --- ÜBERGANG ZUM NÄCHSTEN ZUG ---
-    if state["phase"] == "NEXT":
-        # Abfrage des freiwilligen Extrazugs (Karte 1 Rot)
-        if st.session_state.get("extra_turn_granted"):
-            col_y, col_n = st.columns(2)
-            if col_y.button("✅ Extrazug nutzen"):
-                st.session_state["extra_turn_granted"] = False
-                state["phase"] = "TEST"; save(state); st.rerun()
-            if col_n.button("❌ Auf Extrazug verzichten"):
-                st.session_state["extra_turn_granted"] = False
-                # Geht dann in den normalen Wechsel unten
-            else: st.stop()
+# --- DER ÜBERGANG (NACH DEM EFFEKT) ---
+if state.get("started") and state["phase"] == "NEXT":
+    # 1. Extrazug-Logik (Karte 1 Rot)
+    if st.session_state.get("extra_turn_granted"):
+        st.warning("Du hast einen Extrazug!")
+        col1, col2 = st.columns(2)
+        if col1.button("✅ Nutzen"):
+            st.session_state["extra_turn_granted"] = False
+            state["phase"] = "TEST"; save(state); st.rerun()
+        if col2.button("❌ Verzichten"):
+            st.session_state["extra_turn_granted"] = False
+        else:
+            st.stop() # Warten auf Entscheidung
 
-        # Normaler Wechsel zum nächsten aktiven Spieler
-        next_idx = (state["turn_idx"] + 1) % len(order)
-        while not players[order[next_idx]]["active"]:
-            next_idx = (next_idx + 1) % len(order)
-        
-        state["turn_idx"] = next_idx
-        state["phase"] = "TEST"
-        save(state); st.rerun()
-
-if state["phase"] == "NEXT":
-    # 1. Wer ist der nächste aktive Spieler?
+    # 2. Den nächsten Spieler finden
     current_idx = state["turn_idx"]
     next_idx = (current_idx + 1) % len(order)
     
-    # Überspringe alle, die nicht mehr aktiv sind
     safety_counter = 0
     while not players[order[next_idx]]["active"] and safety_counter < len(order):
         next_idx = (next_idx + 1) % len(order)
         safety_counter += 1
     
-    # 2. Status aktualisieren
+    # 3. Status für neue Runde setzen
     state["turn_idx"] = next_idx
-    state["phase"] = "TEST"  # WICHTIG: Zurück zum Anfang für den nächsten
-    state["active_doubt"] = False # Zweifel-Status zurücksetzen
+    state["phase"] = "TEST" 
+    state["active_doubt"] = False
     
-    # 3. Schutz für den Spieler, der JETZT dran ist, aufheben
+    # WICHTIG: Schutz des Spielers aufheben, der JETZT dran kommt
     players[order[next_idx]]["protected"] = False
     
+    state["log"].append(f"Zug von {curr_p_name} beendet. {order[next_idx]} ist dran.")
     save(state)
     st.rerun()
-
 # --- BLOCK 8: RUNDENENDE & SIEGERERMITTLUNG ---
 
 if state.get("started", False) and state["phase"] == "ROUND_END":
