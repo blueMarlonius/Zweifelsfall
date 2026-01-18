@@ -55,11 +55,18 @@ if not state:
         deck = []
         for c in CARD_LIST: deck.extend([{"val":c[0],"name":c[1],"color":c[2],"eff":c[3],"txt":c[4]}] * 2)
         random.shuffle(deck)
-        state = {"deck": deck, "players": {st.session_state.user: {"hand": [deck.pop()], "active": True, "in_test": False}}, "turn": st.session_state.user, "log": [], "started": False, "pending": None}
+        state = {
+            "deck": deck, 
+            "players": {st.session_state.user: {"hand": [deck.pop()], "active": True, "in_test": False}}, 
+            "turn": st.session_state.user, 
+            "log": [], 
+            "started": False, 
+            "pending": None  # Wichtig: Explizit auf None setzen
+        }
         save(state); st.rerun()
     st.stop()
 
-players = state["players"]
+players = state.get("players", {})
 if st.session_state.user not in players:
     if st.button("Mitspielen"):
         state["players"][st.session_state.user] = {"hand": [state["deck"].pop()], "active": True, "in_test": False}
@@ -67,64 +74,67 @@ if st.session_state.user not in players:
     st.stop()
 
 # --- 6. SPIELSTART & SIEG ---
-alive = [p for p in players if players[p]["active"]]
-if not state["started"]:
+alive = [p for p in players if players[p].get("active", False)]
+if not state.get("started", False):
     st.info(f"Warten auf Spieler... ({len(players)})")
     if len(players) > 1 and st.button("JETZT STARTEN"):
         state["started"] = True; save(state); st.rerun()
     st.stop()
 
-if len(alive) == 1:
-    st.balloons(); st.header(f"🏆 {alive[0]} gewinnt!"); st.button("Reset", on_click=lambda: doc_ref.delete()); st.stop()
+if len(alive) == 1 and state.get("started"):
+    st.balloons(); st.header(f"🏆 {alive[0]} gewinnt!"); 
+    if st.button("Reset"): doc_ref.delete(); st.rerun()
+    st.stop()
 
 # --- 7. DER SPIELZUG ---
-me = players[st.session_state.user]
-st.subheader(f"Spieler: {st.session_state.user} | Dran: {state['turn']}")
+me = players.get(st.session_state.user, {})
+st.subheader(f"Spieler: {st.session_state.user} | Dran: {state.get('turn')}")
 
-if me["active"]:
+if me.get("active"):
     # A: GLAUBENSTEST
-    if state["turn"] == st.session_state.user and me["in_test"]:
+    if state.get("turn") == st.session_state.user and me.get("in_test"):
         st.error("⚖️ GLAUBENSTEST: Ziehe eine Schicksalskarte!")
         if st.button("Prüfung ablegen"):
-            card = state["deck"].pop()
-            state["log"].append(f"⚖️ {st.session_state.user} zieht {card['color']}.")
-            if card["color"] == "Rot":
-                me["active"] = False
-                state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
-            me["in_test"] = False
-            save(state); st.rerun()
+            if len(state["deck"]) > 0:
+                card = state["deck"].pop()
+                state["log"].append(f"⚖️ {st.session_state.user} zieht {card['color']}.")
+                if card["color"] == "Rot":
+                    me["active"] = False
+                    state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
+                me["in_test"] = False
+                save(state); st.rerun()
         st.stop()
 
     # B: KARTE ZIEHEN
-    if state["turn"] == st.session_state.user and len(me["hand"]) == 1 and not state["pending"]:
+    if state.get("turn") == st.session_state.user and len(me.get("hand", [])) == 1 and not state.get("pending"):
         if st.button("Karte ziehen"):
-            me["hand"].append(state["deck"].pop()); save(state); st.rerun()
+            if len(state["deck"]) > 0:
+                me["hand"].append(state["deck"].pop()); save(state); st.rerun()
 
-    # C: KARTEN ANZEIGEN & SPIELEN
-    cols = st.columns(len(me["hand"]))
-    for i, c in enumerate(me["hand"]):
+    # C: KARTEN ANZEIGEN
+    cols = st.columns(len(me.get("hand", [])))
+    for i, c in enumerate(me.get("hand", [])):
         with cols[i]:
             color = "#FF4500" if c["color"] == "Rot" else "#1E90FF"
-            st.markdown(f"<div style='border:3px solid {color}; padding:10px; border-radius:10px;'><h4>{c['name']} ({c['val']})</h4><p><small>{c['eff']}</small></p><i><small>{c['txt']}</small></i></div>", unsafe_allow_html=True)
-            if state["turn"] == st.session_state.user and len(me["hand"]) > 1 and not state["pending"]:
+            st.markdown(f"<div style='border:3px solid {color}; padding:10px; border-radius:10px; min-height:200px;'><h4>{c['name']} ({c['val']})</h4><p><small>{c.get('eff','')}</small></p><i><small>{c.get('txt','')}</small></i></div>", unsafe_allow_html=True)
+            if state.get("turn") == st.session_state.user and len(me["hand"]) > 1 and not state.get("pending"):
                 if c["val"] != 8 and st.button("Spielen", key=f"play_{i}"):
                     played = me["hand"].pop(i)
-                    state["log"].append(f"{st.session_state.user} spielt {played['name']}")
+                    state["log"].append(f"📢 {st.session_state.user} spielt {played['name']}")
                     if played["color"] == "Rot": me["in_test"] = True
                     if played["val"] in [1,2,3,5,6]: state["pending"] = played
                     else: state["turn"] = alive[(alive.index(st.session_state.user)+1)%len(alive)]
                     save(state); st.rerun()
 
     # D: EFFEKT BESTÄTIGEN
-    if state["pending"] and state["turn"] == st.session_state.user:
+    if state.get("pending") and state.get("turn") == st.session_state.user:
         card = state["pending"]
         st.divider()
-        st.write(f"Effekt von **{card['name']}**")
-        targets = [p for p in players if p != st.session_state.user and players[p]["active"]]
+        st.warning(f"Aktion erforderlich: **{card['name']}**")
+        targets = [p for p in players if p != st.session_state.user and players[p].get("active")]
         if targets:
             target = st.selectbox("Ziel wählen:", targets)
-            if st.button("Aktion Bestätigen"):
-                # Hier Logik für Aufklärer (1) - Roter Zwang zum Extrazug
+            if st.button("Bestätigen & Zug beenden"):
                 if card["color"] == "Rot" and card["val"] == 1:
                     state["log"].append("⚖️ Zweifel-Zwang: Extrazug!")
                 else:
@@ -132,4 +142,5 @@ if me["active"]:
                 state["pending"] = None
                 save(state); st.rerun()
 
-st.expander("Protokoll").write(state["log"])
+with st.expander("Protokoll"):
+    for l in reversed(state.get("log", [])): st.write(l)
