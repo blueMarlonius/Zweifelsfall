@@ -46,11 +46,23 @@ for c in [(0,"Tradition","Blau"),(1,"Missionar","Blau"),(2,"Beichtvater","Blau")
 st.set_page_config(page_title="Zweifelsfall", layout="centered")
 st.title("⚖️ Zweifelsfall Online")
 
+# --- NEUER STABILER LOGIN ---
 if "user" not in st.session_state:
-    st.session_state.user = st.text_input("Dein Name:").strip()
-    st.session_state.gid = st.text_input("Spiel-Raum (z.B. Tisch1):").strip()
-    if st.button("Beitreten"):
-        if st.session_state.user and st.session_state.gid: st.rerun()
+    with st.form("login_form"):
+        st.subheader("Willkommen bei Zweifelsfall")
+        name_input = st.text_input("Dein Name:")
+        room_input = st.text_input("Spiel-Raum (z.B. Tisch1):")
+        submit_button = st.form_submit_button("Dem Spiel beitreten")
+        
+        if submit_button:
+            if name_input and room_input:
+                st.session_state.user = name_input.strip()
+                st.session_state.gid = room_input.strip()
+                st.rerun()
+            else:
+                st.error("Bitte gib Namen UND Raum an!")
+    st.stop() # Ganz wichtig: Hier stoppt die App, bis man eingeloggt ist!
+    
 else:
     state = get_state(st.session_state.gid)
 
