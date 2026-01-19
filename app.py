@@ -568,6 +568,19 @@ if state.get("started", False) and state["phase"] == "EFFECT":
 # --- ÜBERGANG ZUM NÄCHSTEN ZUG (AUSSERHALB DER EFFECT-PHASE) ---
 
 if state.get("started") and state["phase"] == "NEXT":
+    # 0. PRÜFUNG: Wer ist noch im Spiel?
+    active_now = [n for n in order if players[n]["active"]]
+    
+    if len(active_now) <= 1:
+        winner = active_now[0] if active_now else "Niemand"
+        # Sofort Marker vergeben und zur Abfrage springen
+        state["players"][winner]["markers"] = state["players"][winner].get("markers", 0) + 1
+        state["round_winner"] = winner
+        state["phase"] = "ROUND_END_QUERY" if state["players"][winner]["markers"] < 3 else "TOURNAMENT_RANKING"
+        save(state); st.rerun()
+    
+    
+if state.get("started") and state["phase"] == "NEXT":
     # 1. Extrazug-Logik (Karte 1 Rot)
     if st.session_state.get("extra_turn_granted"):
         st.warning("Du hast einen Extrazug durch den Zweifelsfall-Bonus!")
