@@ -257,11 +257,6 @@ if state.get("started", False):
     show_opponents_fragment()
     st.divider()
 
-# --- PERMANENTER BUTTON (Immer sichtbar, da außerhalb des 'if') ---
-# Erscheint am unteren Ende der Seite
-if st.button("🔄 Ansicht manuell aktualisieren", use_container_width=True):
-    st.rerun()
-
 # --- ENDE BLOCK 4 ---
 # --- BLOCK 5: DEINE HANDKARTEN (NUR GRAFIK & NAME) ---
 
@@ -356,6 +351,37 @@ if state["phase"] == "DRAW" and curr_p_name == st.session_state.user:
                 state["phase"] = "PLAY" # Sofort zur nächsten Phase wechseln
                 save(state)
                 st.rerun() # Sofortige Aktualisierung ohne Refresh-Warten
+# --- ZWISCHENBLOCK: HANDKARTEN ANZEIGEN (PHASE: PLAY) ---
+if state.get("started", False) and state["phase"] == "PLAY":
+    if curr_p_name == st.session_state.user:
+        st.subheader("Deine Handkarten")
+        st.write("Wähle eine Karte, um ihren Effekt zu nutzen:")
+        
+        # Spalten für die Karten
+        h_cols = st.columns(len(me["hand"]))
+        
+        for i, card in enumerate(me["hand"]):
+            with h_cols[i]:
+                st.image(get_card_image(card), use_container_width=True)
+                c_name = get_card_display_name(card['val'], card['color'])
+                
+                # Der entscheidende Button mit Rerun
+                if st.button(f"{c_name} spielen", key=f"play_{i}_{card['val']}", use_container_width=True):
+                    # 1. Zweifel-Check (war die letzte Karte auf dem Stapel Rot?)
+                    was_doubt = (me["discard_stack"][-1]["color"] == "Rot") if me["discard_stack"] else False
+                    state["active_doubt"] = was_doubt
+                    
+                    # 2. Karte verschieben
+                    me["discard_stack"].append(me["hand"].pop(i))
+                    me["protected"] = False # Immunität erlischt beim eigenen Zug
+                    
+                    # 3. In die Effekt-Phase wechseln (dein Block 7)
+                    state["phase"] = "EFFECT"
+                    
+                    save(state)
+                    st.rerun() # Zwingt die App, sofort Block 7 anzuzeigen
+    else:
+        st.info(f"Warte darauf, dass {curr_p_name} eine Karte spielt...")
 
 # --- BLOCK 7: FINALE KARTEN-EFFEKT-LOGIK (KOMPLETT & STABIL) ---
 
