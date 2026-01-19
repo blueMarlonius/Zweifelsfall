@@ -349,12 +349,14 @@ if state.get("started", False):
                     play_cols = st.columns(len(hand_cards))
                     for i, card in enumerate(hand_cards):
                         with play_cols[i]:
+                            # Hier holen wir uns den Namen für den Button
+                            c_name = get_card_display_name(card['val'], card['color'])
                             # Eindeutiger Key für jeden Button
-                            if st.button(c_name + " spielen", key=f"btn_play_{i}_{card['val']}"):
+                            if st.button(f"{c_name} spielen", key=f"btn_play_{i}_{card['val']}", use_container_width=True):
                                 me["discard_stack"].append(me["hand"].pop(i))
+                                me["protected"] = False
                                 state["phase"] = "DOUBT_CHECK"
                                 save(state); st.rerun()
-
             # PHASE: DOUBT_CHECK (Der Überzeugungstest)
             elif state["phase"] == "DOUBT_CHECK":
                 if me["discard_stack"]:
