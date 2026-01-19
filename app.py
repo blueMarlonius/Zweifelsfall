@@ -350,7 +350,7 @@ if state.get("started", False):
                     for i, card in enumerate(hand_cards):
                         with play_cols[i]:
                             # Eindeutiger Key für jeden Button
-                            if st.button(get_card_display_name + "spielen", key=f"btn_play_{i}_{card['val']}"):
+                            if st.button(c_name + "spielen", key=f"btn_play_{i}_{card['val']}"):
                                 me["discard_stack"].append(me["hand"].pop(i))
                                 state["phase"] = "DOUBT_CHECK"
                                 save(state); st.rerun()
