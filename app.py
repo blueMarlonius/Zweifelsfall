@@ -257,7 +257,6 @@ if state.get("started", False):
 
     show_opponents_fragment()
     st.divider()
-
 # --- ENDE BLOCK 4 ---
 # --- BLOCK 5: DEINE HANDKARTEN (NUR GRAFIK & NAME) ---
 
