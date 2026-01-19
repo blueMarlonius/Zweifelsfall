@@ -195,23 +195,28 @@ if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
 
     # Diese Zeile muss eingerückt sein (4 Leerzeichen vom Rand)
-    @st.fragment(run_every=5)
-    def show_opponents_fragment():
-        # 1. Daten laden
-        f_doc = db.collection("games").document(st.session_state.gid).get()
-        if not f_doc.exists:
-            return
-        
-        f_state = f_doc.to_dict()
-        f_players = f_state.get("players", {})
-        f_order = f_state.get("order", [])
-        
-        # --- DIESE ZEILE FEHLT WAHRSCHEINLICH ODER IST FALSCH PLATZIERT ---
-        # Wir ermitteln den Namen des Spielers, der gerade dran ist:
-        f_curr_p = f_order[f_state["turn_idx"]] if f_order else ""
-        # -----------------------------------------------------------------
+    @st.fragment(run_every=3) # Kurzer Check im Hintergrund
+def show_opponents_fragment():
+    # 1. Aktuellen Stand aus DB holen
+    f_doc = db.collection("games").document(st.session_state.gid).get()
+    if not f_doc.exists: return
+    f_state = f_doc.to_dict()
 
-        cols = st.columns(len(f_order))
+    # 2. Vergleich: Hat sich was geändert? 
+    # Wir erstellen einen "Fingerabdruck" aus Phase, Turn und Kartenanzahl
+    current_hash = f"{f_state.get('phase')}-{f_state.get('turn_idx')}-{len(f_state.get('deck', []))}"
+    
+    # Nur wenn der Hash anders ist als beim letzten Mal, triggern wir ein Rerun
+    if "last_hash" in st.session_state and st.session_state.last_hash != current_hash:
+        st.session_state.last_hash = current_hash
+        st.rerun() # Aktualisiert die gesamte Seite (inkl. Handkarten), wenn was passiert ist
+    
+    st.session_state.last_hash = current_hash
+
+    # --- Hier folgt dein restlicher Code für die Spalten-Anzeige ---
+    f_order = f_state.get("order", [])
+    cols = st.columns(len(f_order))
+    # ... (deine Spalten-Logik von vorhin)
         for i, name in enumerate(f_order):
             p_data = f_players[name]
             with cols[i]:
@@ -600,3 +605,23 @@ if state.get("phase") == "GAME_OVER":
     if st.button("Zurück zur Lobby"):
         state.update({"started": False, "phase": "LOBBY"})
         save(state); st.rerun()
+
+# Ganz unten in deiner app.py, außerhalb jeglicher Einrückung:
+
+st.divider() # Eine Trennlinie
+with st.container():
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        if st.button("🔄 Seite neu laden", use_container_width=True):
+            st.rerun()
+    with c1:
+        st.caption("Spiel-ID: " + st.session_state.get("gid", "Unbekannt"))
+
+# Optional: Ein fixer Button in der Sidebar (bleibt immer links sichtbar)
+with st.sidebar:
+    st.header("Menü")
+    if st.button("📜 Spielregeln"):
+        st.info("Hier stehen die Regeln für den Zweifelsfall...")
+    if st.button("🚪 Raum verlassen"):
+        st.session_state.clear()
+        st.rerun()
