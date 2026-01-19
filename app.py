@@ -288,53 +288,52 @@ if state.get("started", False):
     show_opponents_fragment()
     st.divider()
 # --- ENDE BLOCK 4 ---
-# --- BLOCK 5 & 6 NEU: DYNAMISCHE HAND & ZUG-LOGIK ---
+
+# --- BLOCK 5 & 6: HANDKARTEN & ZUG-LOGIK (REPARIERT) ---
 
 if state.get("started", False):
-    me = players[st.session_state.user]
+    # 'me' definieren, falls noch nicht geschehen
+    me = state["players"].get(st.session_state.user)
     
-    if not me.get("active", True):
+    if me and not me.get("active", True):
         st.info("💀 Du bist in dieser Runde ausgeschieden.")
-    else:
-        # 1. REINE ANZEIGE DER HANDKARTEN
-        # Wir berechnen die Spalten jedes Mal neu basierend auf der aktuellen Hand
+    elif me:
+        # 1. ANZEIGE DER HANDKARTEN
         st.subheader("Deine Hand")
         hand_cards = me.get("hand", [])
+        
         if hand_cards:
+            # Dynamische Spalten verhindern den IndexError
             h_cols = st.columns(len(hand_cards))
             for i, card in enumerate(hand_cards):
                 with h_cols[i]:
                     st.image(get_card_image(card), use_container_width=True)
+                    # Funktion wird jetzt oben gefunden:
                     c_name = get_card_display_name(card['val'], card['color'])
                     st.markdown(f"<p style='text-align:center; font-weight:bold;'>{c_name}</p>", unsafe_allow_html=True)
         
         st.divider()
 
-        # 2. LOGIK: NUR FÜR DEN AKTIVEN SPIELER
+        # 2. LOGIK FÜR DEN AKTIVEN SPIELER
         if curr_p_name == st.session_state.user:
             
-            # PHASE: TEST (Sperr-Regeln vor dem Ziehen)
+            # PHASE: TEST (Sperr-Regel / Sieg-Check)
             if state["phase"] == "TEST":
                 hand_vals = [c["val"] for c in hand_cards]
                 if 8 in hand_vals and 7 in hand_vals:
-                    st.warning("⚠️ Sperr-Regel: Du musst die 7 ablegen!")
-                    if st.button("7 zwangsweise ablegen", type="primary", use_container_width=True):
+                    st.warning("⚠️ Sperr-Regel: Lege die 7 ab!")
+                    if st.button("7 ablegen", type="primary"):
                         idx7 = next(i for i, c in enumerate(me["hand"]) if c["val"] == 7)
                         me["discard_stack"].append(me["hand"].pop(idx7))
                         state["phase"] = "DRAW"; save(state); st.rerun()
-                # Spezialsieg Check
-                elif len(hand_cards) == 1 and hand_cards[0]["val"] == 8 and hand_cards[0]["color"] == "Rot" and state.get("active_doubt"):
-                    st.balloons(); st.success("👑 SPEZIALSIEG!")
-                    state["phase"] = "GAME_OVER"; state["winner"] = st.session_state.user
-                    save(state); st.rerun()
                 else:
                     state["phase"] = "DRAW"; save(state); st.rerun()
 
             # PHASE: DRAW (Zieh-Zwang)
             elif state["phase"] == "DRAW":
                 if len(hand_cards) < 2:
-                    st.info("Bitte ziehe eine Karte, um deinen Zug zu beginnen.")
-                    if st.button("🎴 KARTE ZIEHEN", type="primary", use_container_width=True):
+                    st.info("Dein Zug: Bitte ziehe eine Karte.")
+                    if st.button("🎴 KARTE ZIEHEN", use_container_width=True, type="primary"):
                         if state["deck"]:
                             me["hand"].append(state["deck"].pop())
                             state["phase"] = "PLAY"; save(state); st.rerun()
@@ -343,30 +342,33 @@ if state.get("started", False):
                 else:
                     state["phase"] = "PLAY"; save(state); st.rerun()
 
-            # PHASE: PLAY (Karten legen erst jetzt möglich!)
+            # PHASE: PLAY (Buttons zum Legen erscheinen erst nach dem Ziehen)
             elif state["phase"] == "PLAY":
-                st.warning("Wähle eine Karte zum Ausspielen:")
-                btn_cols = st.columns(len(hand_cards))
-                for i, card in enumerate(hand_cards):
-                    c_name = get_card_display_name(card['val'], card['color'])
-                    if btn_cols[i].button(f"{c_name} spielen", key=f"play_act_{i}", use_container_width=True):
-                        me["discard_stack"].append(me["hand"].pop(i))
-                        me["protected"] = False
-                        state["phase"] = "DOUBT_CHECK"; save(state); st.rerun()
+                if len(hand_cards) >= 2:
+                    st.warning("Wähle eine Karte zum Ausspielen:")
+                    play_cols = st.columns(len(hand_cards))
+                    for i, card in enumerate(hand_cards):
+                        with play_cols[i]:
+                            # Eindeutiger Key für jeden Button
+                            if st.button("Spielen", key=f"btn_play_{i}_{card['val']}"):
+                                me["discard_stack"].append(me["hand"].pop(i))
+                                state["phase"] = "DOUBT_CHECK"
+                                save(state); st.rerun()
 
-            # PHASE: DOUBT_CHECK (Überzeugungstest)
+            # PHASE: DOUBT_CHECK (Der Überzeugungstest)
             elif state["phase"] == "DOUBT_CHECK":
-                played_card = me["discard_stack"][-1]
-                if played_card["color"] == "Rot":
-                    st.error("⚠️ ÜBERZEUGUNGSTEST! Deine Karte ist ROT.")
-                    if st.button("🧧 TESTKARTE ZIEHEN", type="primary", use_container_width=True):
-                        if state["deck"]:
-                            test_card = state["deck"].pop()
-                            state["active_doubt"] = (test_card["color"] == "Rot")
-                            state["phase"] = "EFFECT"; save(state); st.rerun()
-                else:
-                    state["active_doubt"] = False
-                    state["phase"] = "EFFECT"; save(state); st.rerun()
+                if me["discard_stack"]:
+                    last_card = me["discard_stack"][-1]
+                    if last_card["color"] == "Rot":
+                        st.error("⚠️ ÜBERZEUGUNGSTEST! Deine Karte ist ROT.")
+                        if st.button("🧧 TESTKARTE ZIEHEN", type="primary"):
+                            if state["deck"]:
+                                test_card = state["deck"].pop()
+                                state["active_doubt"] = (test_card["color"] == "Rot")
+                                state["phase"] = "EFFECT"; save(state); st.rerun()
+                    else:
+                        state["active_doubt"] = False
+                        state["phase"] = "EFFECT"; save(state); st.rerun()
 
 # --- BLOCK 7: FINALE KARTEN-EFFEKT-LOGIK (KOMPLETT & STABIL) ---
 
