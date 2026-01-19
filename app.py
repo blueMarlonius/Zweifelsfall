@@ -189,72 +189,80 @@ if not state.get("started", False):
 
     st.stop() # Verhindert das Laden des Spielfelds, solange wir in der Lobby sind
 
-# --- BLOCK 4: DAS SPIELFELD (KORRIGIERTE VERSION) ---
+# --- BLOCK 4: DAS SPIELFELD (KOMPLETTER ERSATZ) ---
 
 if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
 
-    # Diese Zeile muss eingerückt sein (4 Leerzeichen vom Rand)
-    @st.fragment(run_every=3) # Kurzer Check im Hintergrund
-def show_opponents_fragment():
-    # 1. Aktuellen Stand aus DB holen
-    f_doc = db.collection("games").document(st.session_state.gid).get()
-    if not f_doc.exists: return
-    f_state = f_doc.to_dict()
-
-    # 2. Vergleich: Hat sich was geändert? 
-    # Wir erstellen einen "Fingerabdruck" aus Phase, Turn und Kartenanzahl
-    current_hash = f"{f_state.get('phase')}-{f_state.get('turn_idx')}-{len(f_state.get('deck', []))}"
-    
-    # Nur wenn der Hash anders ist als beim letzten Mal, triggern wir ein Rerun
-    if "last_hash" in st.session_state and st.session_state.last_hash != current_hash:
+    @st.fragment(run_every=3)
+    def show_opponents_fragment():
+        # 1. Daten frisch aus Firestore laden
+        f_doc = db.collection("games").document(st.session_state.gid).get()
+        if not f_doc.exists: 
+            return
+        f_state = f_doc.to_dict()
+        
+        # 2. Intelligenter Refresh: Nur bei echten Änderungen die ganze Seite neu laden
+        # Wir prüfen: Phase, wer ist dran, und wie viele Karten sind im Deck?
+        current_hash = f"{f_state.get('phase')}-{f_state.get('turn_idx')}-{len(f_state.get('deck', []))}"
+        
+        if "last_hash" in st.session_state and st.session_state.last_hash != current_hash:
+            st.session_state.last_hash = current_hash
+            st.rerun() # Ganze Seite neu laden (auch deine Hand), wenn sich das Spiel bewegt hat
+        
         st.session_state.last_hash = current_hash
-        st.rerun() # Aktualisiert die gesamte Seite (inkl. Handkarten), wenn was passiert ist
-    
-    st.session_state.last_hash = current_hash
 
-    # --- Hier folgt dein restlicher Code für die Spalten-Anzeige ---
-    f_order = f_state.get("order", [])
-    cols = st.columns(len(f_order))
-    # ... (deine Spalten-Logik von vorhin)
+        # 3. Variablen für die Anzeige vorbereiten
+        f_players = f_state.get("players", {})
+        f_order = f_state.get("order", [])
+        f_curr_p = f_order[f_state["turn_idx"]] if f_order else ""
+
+        # 4. Das Spielfeld zeichnen
+        cols = st.columns(len(f_order))
         for i, name in enumerate(f_order):
-            p_data = f_players[name]
+            p_data = f_players.get(name, {})
             with cols[i]:
-                # Jetzt ist f_curr_p bekannt und der Fehler verschwindet:
+                # Aktiven Spieler markieren
                 is_turn = (name == f_curr_p)
                 border_color = "#FF4B4B" if is_turn else "#333"
                 
-                # DEIN ORIGINALER HTML-CODE:
                 st.markdown(f"""
                     <div style="text-align: center; border-bottom: 3px solid {border_color}; padding-bottom: 5px; margin-bottom: 10px;">
                         <b style="font-size: 1.1em;">{name}</b>
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Icons für Status
+                # Status Icons (Out / Safe)
                 status_info = ""
                 if not p_data.get("active", True): status_info += "💀 "
                 if p_data.get("protected"): status_info += "🛡️ "
-                if status_info: st.write(status_info)
+                if status_info: 
+                    st.markdown(f"<div style='text-align:center;'>{status_info}</div>", unsafe_allow_html=True)
 
-                # Anzeige der obersten Karte
+                # Anzeige der obersten Karte im Ablagestapel
                 stack = p_data.get("discard_stack", [])
                 if stack:
                     top_card = stack[-1]
                     st.image(get_card_image(top_card), use_container_width=True)
                     c_name = get_card_display_name(top_card['val'], top_card['color'])
-                    st.markdown(f"<p style='text-align:center; font-size:0.9em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='text-align:center; font-size:0.8em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
                 else:
-                    # Dein Platzhalter für leeren Stapel
-                    st.markdown('<div style="height:100px; border:2px dashed #444; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#444; font-size:0.8em;">Leer</div>', unsafe_allow_html=True)
+                    # Platzhalter für leeren Stapel
+                    st.markdown('<div style="height:120px; border:2px dashed #444; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#444; font-size:0.8em; margin-bottom:10px;">Leer</div>', unsafe_allow_html=True)
                 
-                # Siegmarker
+                # Siegmarker (Weiße Punkte)
                 st.markdown(f"<p style='text-align:center;'>⚪ {p_data.get('markers', 0)}</p>", unsafe_allow_html=True)
 
-    # 2. JETZT DAS FRAGMENT AUFRUFEN:
+    # Funktion aufrufen (muss eingerückt sein!)
     show_opponents_fragment()
-
     st.divider()
+
+# --- PERMANENTER BUTTON (Immer sichtbar, da außerhalb des 'if') ---
+# Erscheint am unteren Ende der Seite
+if st.button("🔄 Ansicht manuell aktualisieren", use_container_width=True):
+    st.rerun()
+
+# --- ENDE BLOCK 4 ---
 # --- BLOCK 5: DEINE HANDKARTEN (NUR GRAFIK & NAME) ---
 
 def get_card_display_name(val, color):
