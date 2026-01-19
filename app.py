@@ -189,7 +189,7 @@ if not state.get("started", False):
 
     st.stop() # Verhindert das Laden des Spielfelds, solange wir in der Lobby sind
 
-# --- BLOCK 4: DAS SPIELFELD (KOMPLETTER ERSATZ) ---
+# --- BLOCK 4: DAS SPIELFELD (MIT FEHLER-KORREKTUR) ---
 
 if state.get("started", False):
     st.title("⚖️ ZWEIFELSFALL")
@@ -202,17 +202,14 @@ if state.get("started", False):
             return
         f_state = f_doc.to_dict()
         
-        # 2. Intelligenter Refresh: Nur bei echten Änderungen die ganze Seite neu laden
-        # Wir prüfen: Phase, wer ist dran, und wie viele Karten sind im Deck?
+        # 2. Intelligenter Refresh
         current_hash = f"{f_state.get('phase')}-{f_state.get('turn_idx')}-{len(f_state.get('deck', []))}"
-        
         if "last_hash" in st.session_state and st.session_state.last_hash != current_hash:
             st.session_state.last_hash = current_hash
-            st.rerun() # Ganze Seite neu laden (auch deine Hand), wenn sich das Spiel bewegt hat
-        
+            st.rerun() 
         st.session_state.last_hash = current_hash
 
-        # 3. Variablen für die Anzeige vorbereiten
+        # 3. Variablen vorbereiten
         f_players = f_state.get("players", {})
         f_order = f_state.get("order", [])
         f_curr_p = f_order[f_state["turn_idx"]] if f_order else ""
@@ -222,7 +219,6 @@ if state.get("started", False):
         for i, name in enumerate(f_order):
             p_data = f_players.get(name, {})
             with cols[i]:
-                # Aktiven Spieler markieren
                 is_turn = (name == f_curr_p)
                 border_color = "#FF4B4B" if is_turn else "#333"
                 
@@ -232,28 +228,33 @@ if state.get("started", False):
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Status Icons (Out / Safe)
                 status_info = ""
                 if not p_data.get("active", True): status_info += "💀 "
                 if p_data.get("protected"): status_info += "🛡️ "
                 if status_info: 
                     st.markdown(f"<div style='text-align:center;'>{status_info}</div>", unsafe_allow_html=True)
 
-                # Anzeige der obersten Karte im Ablagestapel
+                # --- KORRIGIERTER KARTEN-ABSCHNITT ---
                 stack = p_data.get("discard_stack", [])
-                if stack:
+                if stack and len(stack) > 0:
                     top_card = stack[-1]
-                    st.image(get_card_image(top_card), use_container_width=True)
-                    c_name = get_card_display_name(top_card['val'], top_card['color'])
-                    st.markdown(f"<p style='text-align:center; font-size:0.8em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
+                    # Sicherstellen, dass top_card ein Dictionary mit Daten ist
+                    if top_card and isinstance(top_card, dict):
+                        st.image(get_card_image(top_card), use_container_width=True)
+                        
+                        # Sicherer Aufruf der Namens-Funktion
+                        val = top_card.get('val', 0)
+                        col = top_card.get('color', 'Blau')
+                        try:
+                            c_name = get_card_display_name(val, col)
+                            st.markdown(f"<p style='text-align:center; font-size:0.8em; font-weight:bold; color:#ccc;'>{c_name}</p>", unsafe_allow_html=True)
+                        except:
+                            st.markdown(f"<p style='text-align:center; font-size:0.8em;'>Karte {val}</p>", unsafe_allow_html=True)
                 else:
-                    # Platzhalter für leeren Stapel
                     st.markdown('<div style="height:120px; border:2px dashed #444; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#444; font-size:0.8em; margin-bottom:10px;">Leer</div>', unsafe_allow_html=True)
                 
-                # Siegmarker (Weiße Punkte)
                 st.markdown(f"<p style='text-align:center;'>⚪ {p_data.get('markers', 0)}</p>", unsafe_allow_html=True)
 
-    # Funktion aufrufen (muss eingerückt sein!)
     show_opponents_fragment()
     st.divider()
 
