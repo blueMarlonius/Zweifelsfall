@@ -15,6 +15,16 @@ if "db" not in st.session_state:
 db = st.session_state.db
 
 # --- 2. HELFER-FUNKTIONEN ---
+def get_card_display_name(val, color):
+    """Gibt ausschließlich den Namen der Karte zurück."""
+    names = {
+        0: ("Tradition", "Indoktrination"), 1: ("Missionar", "Aufklärer"),
+        2: ("Beichtvater", "Psychologe"), 3: ("Mystiker", "Logiker"),
+        4: ("Eremit", "Stoiker"), 5: ("Prediger", "Reformator"),
+        6: ("Prophet", "Agnostiker"), 7: ("Wunder", "Zufall"), 8: ("Gott", "Atheist")
+    }
+    return names[val][0] if color == "Blau" else names[val][1]
+    
 def create_deck():
     """Erstellt ein Deck nur aus Werten und Farben."""
     # Anzahl der Karten pro Wert (0 bis 8)
