@@ -403,6 +403,32 @@ if state.get("started", False) and state["phase"] == "PLAY":
     else:
         st.info(f"Warte darauf, dass {curr_p_name} eine Karte spielt...")
 
+# --- NEUER ZWISCHENBLOCK: ÜBERZEUGUNGSTEST ---
+if state.get("started") and state["phase"] == "DOUBT_CHECK":
+    if curr_p_name == st.session_state.user:
+        played_card = me["discard_stack"][-1]
+        
+        if played_card["color"] == "Rot":
+            st.error("⚠️ ÜBERZEUGUNGSTEST! Du hast eine ROTE Karte gelegt.")
+            st.write("Ziehe eine Karte vom Deck. Ist sie ebenfalls ROT, ist der Zweifel aktiv!")
+            
+            if st.button("🧧 TESTKARTE ZIEHEN"):
+                if state["deck"]:
+                    test_card = state["deck"].pop()
+                    if test_card["color"] == "Rot":
+                        st.error(f"Testkarte war ROT! Zweifel bestätigt.")
+                        state["active_doubt"] = True
+                    else:
+                        st.success(f"Testkarte war BLAU! Zweifel abgewendet.")
+                        state["active_doubt"] = False
+                    
+                    state["phase"] = "EFFECT"
+                    save(state); st.rerun()
+        else:
+            # Blaue Karte -> Kein Test nötig
+            state["active_doubt"] = False
+            state["phase"] = "EFFECT"; save(state); st.rerun()
+
 # --- BLOCK 7: FINALE KARTEN-EFFEKT-LOGIK (KOMPLETT & STABIL) ---
 
 if state.get("started", False) and state["phase"] == "EFFECT":
