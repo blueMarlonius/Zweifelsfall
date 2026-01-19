@@ -126,6 +126,8 @@ if state.get("started") and curr_p_name == st.session_state.user:
 # --- BLOCK 3: LOBBY & MANUELLE REIHENFOLGE ---
 
 if not state.get("started", False):
+    # NEU: Schneller Refresh nur in der Lobby
+    st_autorefresh(interval=2000, key="lobby_refresh") 
     st.header(f"🏠 Lobby: {st.session_state.gid}")
     
     # 1. Spielerliste anzeigen
