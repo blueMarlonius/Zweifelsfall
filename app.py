@@ -31,6 +31,24 @@ def create_deck():
     random.shuffle(deck)
     return deck
 
+def setup_next_round(state):
+    """Setzt das Spiel für eine neue Runde zurück, behält aber die Marker."""
+    new_deck = create_deck()
+    state.update({
+        "started": True,
+        "deck": new_deck,
+        "phase": "TEST",
+        "turn_idx": 0,
+        "log": ["Eine neue Runde hat begonnen!"]
+    })
+    for p_name in state["order"]:
+        state["players"][p_name].update({
+            "active": True,
+            "hand": [state["deck"].pop()],
+            "discard_stack": [],
+            "protected": False
+        })
+
 def save(state):
     # Nur speichern, wenn wir eine gültige Raum-ID haben
     if "gid" in st.session_state:
@@ -614,42 +632,89 @@ if state.get("started", False) and state["phase"] == "ROUND_END":
             status = "💀 (Giftige 0!)" if res["score"] == -1 else f"Wert: {res['val']}"
             st.write(f"**{res['name']}**: {status}")
 
-        if st.button("Nächste Runde vorbereiten"):
-            # Spielzustand zurücksetzen
-            state.update({
-                "started": False,
-                "phase": "LOBBY",
-                "deck": [],
-                "order": order # Reihenfolge bleibt gleich
-            })
-            # Siegmarker erhöhen
-            players[winner]["markers"] += 1
-            # Hände leeren
-            for p in players.values():
-                p["hand"] = []
-                p["discard_stack"] = []
-                p["active"] = True
-            save(state); st.rerun()
+        if st.button("Runde abschließen & Marker vergeben"):
+            # 1. Siegmarker im State erhöhen
+            state["players"][winner]["markers"] += 1
+            state["round_winner"] = winner
+            
+            # 2. Prüfen: Hat jemand das Turnier gewonnen (3 Marker)?
+            if state["players"][winner]["markers"] >= 3:
+                state["phase"] = "TOURNAMENT_RANKING"
+            else:
+                # Sonst: Abfrage, ob weitergespielt wird
+                state["phase"] = "ROUND_END_QUERY"
+                
+            save(state)
+            st.rerun()
 
-# --- BLOCK 9: GAME OVER (Spezialsieg der 8) ---
+# --- BLOCK 9: TURNIER-LOGIK (SPEZIALSIEG, ABFRAGE & RANGLISTE) ---
+
+# A. Spezialsieg der 8 (angepasst an Turnier-Logik)
 if state.get("phase") == "GAME_OVER":
     st.balloons()
+    winner = state.get("winner", "Unbekannt")
     st.header(f"👑 SPEZIALSIEG!")
-    st.success(f"{state.get('winner')} hat durch die Rote 8 sofort gewonnen!")
-    if st.button("Zurück zur Lobby"):
-        state.update({"started": False, "phase": "LOBBY"})
-        save(state); st.rerun()
+    st.success(f"**{winner}** hat durch die Rote 8 sofort gewonnen!")
+    
+    if st.button("Runde abschließen & Marker vergeben", key="btn_spec_win"):
+        # Marker im State erhöhen
+        state["players"][winner]["markers"] = state["players"][winner].get("markers", 0) + 1
+        state["round_winner"] = winner
+        
+        # Siegprüfung
+        if state["players"][winner]["markers"] >= 3:
+            state["phase"] = "TOURNAMENT_RANKING"
+        else:
+            state["phase"] = "ROUND_END_QUERY"
+            
+        save(state)
+        st.rerun()
 
-# Ganz unten in deiner app.py, außerhalb jeglicher Einrückung:
-
-st.divider() # Eine Trennlinie
-with st.container():
-    c1, c2 = st.columns([3, 1])
-    with c2:
-        if st.button("🔄 Seite neu laden", use_container_width=True):
+# B. Die Abfrage nach einer normalen Runde
+if state.get("phase") == "ROUND_END_QUERY":
+    st.balloons()
+    winner = state.get("round_winner", "Unbekannt")
+    st.header(f"🏆 {winner} gewinnt die Runde!")
+    st.subheader("Möchtet ihr eine weitere Runde spielen?")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ JA - Nächste Runde", use_container_width=True, type="primary"):
+            # Hier nutzen wir die neue Reset-Funktion aus Schritt 1
+            setup_next_round(state) 
+            save(state)
             st.rerun()
-    with c1:
-        st.caption("Spiel-ID: " + st.session_state.get("gid", "Unbekannt"))
+    with col2:
+        if st.button("❌ NEIN - Turnier beenden", use_container_width=True):
+            state["phase"] = "TOURNAMENT_RANKING"
+            save(state)
+            st.rerun()
+
+# C. Die finale Rangliste
+if state.get("phase") == "TOURNAMENT_RANKING":
+    st.title("📊 Endstand des Turniers")
+    
+    # Spieler nach Markern sortieren
+    sorted_players = sorted(state["players"].items(), key=lambda x: x[1].get("markers", 0), reverse=True)
+    
+    for i, (p_name, p_data) in enumerate(sorted_players):
+        m = p_data.get("markers", 0)
+        medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
+        
+        with st.container():
+            st.markdown(f"### {medal} {p_name}")
+            st.write(f"Sinn-Marker: {m} / 3")
+            st.progress(min(m/3, 1.0))
+            st.divider()
+    
+    if st.button("Gesamtes Turnier zurücksetzen", use_container_width=True):
+        # Alle Marker auf 0 und zurück in die Lobby
+        for p in state["players"].values():
+            p["markers"] = 0
+        state["phase"] = "LOBBY"
+        state["started"] = False
+        save(state)
+        st.rerun()
 
 # Optional: Ein fixer Button in der Sidebar (bleibt immer links sichtbar)
 with st.sidebar:
